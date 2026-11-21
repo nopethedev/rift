@@ -1,0 +1,54 @@
+# Rift: web app + dedicated FFmpeg worker. SQLite by default; see the `postgres` profile for PostgreSQL.
+#   docker compose up -d --build          (SQLite)
+#   docker compose --profile postgres up -d --build   (set DATABASE_URL below / in .env)
+services:
+  web:
+    build:
+      context: .
+      args:
+        DATABASE_URL: ${DATABASE_URL:-file:/app/data/rift.db}
+    restart: unless-stopped
+    ports: ["${RIFT_PORT:-3000}:3000"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/rift.db}
+      WORKER_URL: http://worker:4100
+      WORKER_TOKEN: ${WORKER_TOKEN:?set WORKER_TOKEN in .env}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - rift-data:/app/data
+      - ${MEDIA_PATH:-./media}:/media
+    depends_on: [worker]
+
+  worker:
+    build:
+      context: .
+    restart: unless-stopped
+    command: ["npm", "run", "start:worker"]
+    environment:
+      WORKER_PORT: 4100
+      WORKER_TOKEN: ${WORKER_TOKEN:?set WORKER_TOKEN in .env}
+      MAX_SESSIONS: ${MAX_SESSIONS:-2}
+      TRANSCODE_DIR: /transcode
+    volumes:
+      # Media must be mounted at the same path as in the web container.
+      - ${MEDIA_PATH:-./media}:/media:ro
+      - transcode:/transcode
+    # Hardware acceleration (uncomment what applies):
+    # devices: ["/dev/dri:/dev/dri"]          # VAAPI / Intel QSV
+    # deploy: { resources: { reservations: { devices: [{ capabilities: [gpu] }] } } }   # NVIDIA NVENC
+
+  postgres:
+    profiles: [postgres]
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rift
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rift}
+      POSTGRES_DB: rift
+    volumes: [pg-data:/var/lib/postgresql/data]
+
+volumes:
+  rift-data:
+  transcode:
+  pg-data:

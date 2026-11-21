@@ -1,0 +1,98 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import clsx from "clsx";
+import { LogOut, Search, Settings2, Users, X } from "lucide-react";
+import { Avatar, Logo } from "./brand";
+import { api } from "./ui";
+
+const LINKS = [
+  { href: "/", label: "Home" },
+  { href: "/browse/tv", label: "TV Shows" },
+  { href: "/browse/movies", label: "Movies" },
+  { href: "/my-list", label: "My List" },
+];
+
+export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: string }; isAdmin: boolean }) {
+  const path = usePathname();
+  const router = useRouter();
+  const [solid, setSolid] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [q, setQ] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const on = () => setSolid(window.scrollY > 24);
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
+  }, []);
+  useEffect(() => { if (searching) input.current?.focus(); }, [searching]);
+  useEffect(() => { setMenu(false); if (!path.startsWith("/search")) { setQ(""); setSearching(false); } }, [path]);
+
+  const onSearch = (v: string) => {
+    setQ(v);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => (v.trim().length >= 2 ? router.replace(`/search?q=${encodeURIComponent(v.trim())}`) : v === "" && path.startsWith("/search") && router.replace("/")), 300);
+  };
+
+  async function signOut() {
+    await api("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
+    router.refresh();
+  }
+
+  return (
+    <nav className={clsx("fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-6 px-4 transition-colors duration-300 sm:px-12", solid ? "bg-bg/95 shadow-lg backdrop-blur" : "bg-gradient-to-b from-black/80 to-transparent")}>
+      <Link href="/" aria-label="Rift home"><Logo /></Link>
+      <ul className="hidden items-center gap-5 text-sm md:flex">
+        {LINKS.map((l) => (
+          <li key={l.href}>
+            <Link href={l.href} className={clsx("transition hover:text-white", (l.href === "/" ? path === "/" : path.startsWith(l.href)) ? "font-semibold text-white" : "text-white/65")}>{l.label}</Link>
+          </li>
+        ))}
+      </ul>
+      <div className="ml-auto flex items-center gap-3">
+        <div className={clsx("flex items-center overflow-hidden rounded-lg border transition-all", searching ? "w-44 border-white/40 bg-black/60 sm:w-64" : "w-9 border-transparent")}>
+          <button aria-label="Search" onClick={() => setSearching(true)} className="flex size-9 shrink-0 items-center justify-center"><Search className="size-5" /></button>
+          {searching && (
+            <>
+              <input ref={input} value={q} onChange={(e) => onSearch(e.target.value)} onBlur={() => !q && setSearching(false)} placeholder="Titles, people, genres" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/40" />
+              {q && <button aria-label="Clear" onClick={() => { setQ(""); input.current?.focus(); }} className="px-2"><X className="size-4" /></button>}
+            </>
+          )}
+        </div>
+        <div className="relative">
+          <button onClick={() => setMenu((m) => !m)} aria-label="Account menu" aria-expanded={menu} className="flex items-center rounded-md outline-none ring-accent focus-visible:ring-2"><Avatar avatar={profile.avatar} size={34} /></button>
+          {menu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
+              <div className="glass absolute right-0 z-50 mt-3 w-56 overflow-hidden rounded-xl border border-white/10 py-1.5 text-sm shadow-2xl">
+                <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3"><Avatar avatar={profile.avatar} size={32} /><span className="truncate font-semibold">{profile.name}</span></div>
+                <Link href="/profiles" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Users className="size-4" /> Switch profile</Link>
+                <Link href="/profiles?manage=1" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Settings2 className="size-4" /> Manage profiles</Link>
+                {isAdmin && <Link href="/admin" className="flex items-center gap-3 px-4 py-2.5 text-violet-300 hover:bg-white/10"><Settings2 className="size-4" /> Admin dashboard</Link>}
+                <button onClick={signOut} className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-2.5 text-left hover:bg-white/10"><LogOut className="size-4" /> Sign out</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+/** Bottom tab bar for small screens (the top links are hidden below md). */
+export function MobileTabs() {
+  const path = usePathname();
+  return (
+    <div className="glass fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-white/10 py-2 text-xs md:hidden">
+      {LINKS.map((l) => (
+        <Link key={l.href} href={l.href} className={clsx("px-3 py-1", (l.href === "/" ? path === "/" : path.startsWith(l.href)) ? "font-semibold text-white" : "text-white/55")}>{l.label}</Link>
+      ))}
+    </div>
+  );
+}
