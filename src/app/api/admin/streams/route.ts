@@ -25,6 +25,7 @@ export const GET = route("admin", async () => {
     })),
     transcodes: worker,
     torrentStreams: getTorrentStreamer().list(),
+    onDemand: await getTorrentStreamer().capacity(),
   };
 });
 

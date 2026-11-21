@@ -10,6 +10,7 @@ type S = {
   storageLimitGB: number; maxActiveDownloads: number; downloadLimitKBps: number; uploadLimitKBps: number; autoImportDownloads: boolean;
   hwaccel: string; transcodeLadder: number[]; maxTranscodeJobs: number; enforceMediabunnyAudio: boolean;
   torrentSearchProviders: string[]; torznabUrl: string; torznabApiKey: string; sessionDays: number;
+  onDemandMaxStreams: number; onDemandAccess: "admins" | "everyone";
   opensubtitlesApiKey: string; opensubtitlesUsername: string; opensubtitlesPassword: string; subtitleLanguages: string[];
 };
 interface Resp { settings: S; ffmpeg: { ffmpeg: string | null; ffprobe: string | null; worker: { hwaccels: string[] } | null } }
@@ -137,6 +138,17 @@ export default function SettingsPage() {
           <Input label="Torznab URL (Jackett / Prowlarr)" value={s.torznabUrl} onChange={(e) => set("torznabUrl", e.target.value)} placeholder="http://prowlarr:9696/1/api" />
           <Input label="Torznab API key" value={s.torznabApiKey} onChange={(e) => set("torznabApiKey", e.target.value)} />
           <p className="text-xs text-muted">Only download content you own or are licensed to use. You are responsible for what you add.</p>
+        </Card>
+
+        <Card className="space-y-4">
+          <h2 className="font-semibold">On-demand streaming</h2>
+          <p className="text-xs text-muted">Play a title that isn&apos;t in your library: Rift finds a torrent, buffers a few MB and streams it, then deletes the data a minute after the viewer leaves. Each active stream keeps a temporary copy on disk, so cap how many can run at once if storage is tight.</p>
+          <Input label="Max simultaneous streams" type="number" min={0} max={50} value={s.onDemandMaxStreams} onChange={num("onDemandMaxStreams")} hint="0 turns on-demand streaming off. Anyone starting a stream beyond the limit is asked to try again shortly." />
+          <Select label="Who can start a stream" value={s.onDemandAccess} onChange={(e) => set("onDemandAccess", e.target.value as "admins" | "everyone")}>
+            <option value="admins">Administrators only</option>
+            <option value="everyone">Everyone with an account</option>
+          </Select>
+          <p className="text-xs text-muted">Only enable &ldquo;Everyone&rdquo; if you are comfortable with what your users may stream: you are responsible for the content that passes through your server.</p>
         </Card>
 
         <Card className="space-y-4">

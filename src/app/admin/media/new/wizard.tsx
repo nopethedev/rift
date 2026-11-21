@@ -257,7 +257,7 @@ function buildQuery(t: Hit, season: number | null, episode: number | null) {
 
 async function startStream(router: ReturnType<typeof useRouter>, body: object): Promise<string | null> {
   try {
-    const r = await api<{ stream: { id: string } }>("/api/admin/torrent-streams", { method: "POST", body });
+    const r = await api<{ stream: { id: string } }>("/api/ondemand", { method: "POST", body });
     router.push(`/stream/${r.stream.id}`);
     return null;
   } catch (e) {
@@ -405,7 +405,7 @@ function TorrentPick({ title, season, result, onBack }: { title: Hit; season: nu
               setErr("");
               const vids = preview.files.filter((f) => sel.has(f.index) && /\.(mkv|mp4|m4v|mov|avi|webm|ts|m2ts|wmv|flv|mpg|mpeg|ogv)$/i.test(f.path));
               const fileIndex = vids.length === 1 ? vids[0].index : undefined;
-              if (file) { const f = new FormData(); f.set("file", file); if (fileIndex !== undefined) f.set("fileIndex", String(fileIndex)); const r = await fetch("/api/admin/torrent-streams", { method: "POST", body: f }); const j = await r.json(); if (!r.ok) return setErr(j.error); router.push(`/stream/${j.stream.id}`); return; }
+              if (file) { const f = new FormData(); f.set("file", file); if (fileIndex !== undefined) f.set("fileIndex", String(fileIndex)); const r = await fetch("/api/ondemand", { method: "POST", body: f }); const j = await r.json(); if (!r.ok) return setErr(j.error); router.push(`/stream/${j.stream.id}`); return; }
               const m = await startStream(router, { ...(result ? { result } : { magnet: magnet.trim() }), fileIndex });
               if (m) setErr(m);
             }}><Zap className="size-4" /> Stream now (no download)</Button>

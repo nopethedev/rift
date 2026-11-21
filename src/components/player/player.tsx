@@ -23,9 +23,9 @@ const codecLabel = (c: string) => ({ eac3: "Dolby Digital+", ac3: "Dolby Digital
 type Menu = null | "subs" | "audio" | "quality" | "speed";
 
 export function Player({ fileId, torrent = false }: { fileId: string; torrent?: boolean }) {
-  // Torrent streams: served by /api/admin/torrent-streams/:id, kept alive by a heartbeat, no server transcode.
+  // Torrent streams: served by /api/ondemand/:id, kept alive by a heartbeat, no server transcode.
   const urls = torrent
-    ? { info: `/api/admin/torrent-streams/${fileId}/info`, file: `/api/admin/torrent-streams/${fileId}/file`, beat: `/api/admin/torrent-streams/${fileId}` }
+    ? { info: `/api/ondemand/${fileId}/info`, file: `/api/ondemand/${fileId}/file`, beat: `/api/ondemand/${fileId}` }
     : { info: `/api/media/${fileId}/info`, file: `/api/stream/${fileId}`, beat: "" };
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -104,7 +104,7 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
           engine = await startDirect(video, urls.file, resumeAt);
         } else if (d.mode === "mediabunny") {
           const track = info.audio[audioOrdinal] ?? info.audio[0];
-          const audioCodec = await pickAudioEncoder(info.video?.codec === "vp9" || info.video?.codec === "av1");
+          const audioCodec = await pickAudioEncoder(false); // AAC wherever the browser can encode it; Opus only as a fallback
           const e = new MediabunnyEngine(video, {
             url: urls.file, durationSec: info.durationSec, audioOrdinal, audioCodec, sourceAudioCodec: track?.codec,
             onBusy: (b) => !cancelled && setBusy(b), onError: (m) => !cancelled && setError(m),

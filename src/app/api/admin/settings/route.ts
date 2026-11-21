@@ -30,6 +30,8 @@ const schema = z.object({
   opensubtitlesApiKey: z.string().trim().max(200),
   opensubtitlesUsername: z.string().trim().max(100),
   opensubtitlesPassword: z.string().max(200),
+  onDemandMaxStreams: z.number().int().min(0).max(50),
+  onDemandAccess: z.enum(["admins", "everyone"]),
   subtitleLanguages: z.array(z.string().regex(/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/)).min(1).max(8),
 }).partial();
 

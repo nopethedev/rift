@@ -8,7 +8,7 @@ import { fmtBytes } from "@/lib/types";
 import { Player } from "@/components/player/player";
 
 interface S {
-  id: string; name: string; status: "metadata" | "choose" | "buffering" | "ready" | "error"; error?: string | null;
+  id: string; infoHash: string; meta: { title: string; subtitle?: string; backPath?: string; type?: "movie" | "tv"; tmdbId?: number; season?: number; episode?: number } | null; name: string; status: "metadata" | "choose" | "buffering" | "ready" | "error"; error?: string | null;
   files: { index: number; path: string; size: number; video: boolean }[];
   fileName: string | null; fileSize: number; prebuffer: number; progress: number; downloaded: number; downloadSpeed: number; peers: number;
 }
@@ -25,7 +25,7 @@ export function StreamScreen({ id }: { id: string }) {
     let live = true;
     const tick = async () => {
       try {
-        const r = await api<{ stream: S }>(`/api/admin/torrent-streams/${id}`);
+        const r = await api<{ stream: S }>(`/api/ondemand/${id}`);
         if (!live) return;
         setS(r.stream);
         if (r.stream.status === "ready") ready.current = true;
@@ -41,17 +41,30 @@ export function StreamScreen({ id }: { id: string }) {
 
   if (s?.status === "ready") return <Player torrent fileId={id} />;
 
-  const stop = async () => { await api(`/api/admin/torrent-streams/${id}`, { method: "DELETE" }).catch(() => {}); router.push("/admin/media/new"); };
+  const home = s?.meta?.backPath ?? "/";
+  const stop = async () => { await api(`/api/ondemand/${id}`, { method: "DELETE" }).catch(() => {}); router.push(home); };
+  // Started from a title: a dead source can be swapped for the next-best one.
+  const another = async () => {
+    if (!s?.meta?.tmdbId || !s.meta.type) return;
+    await api(`/api/ondemand/${id}`, { method: "DELETE" }).catch(() => {});
+    const q = new URLSearchParams({ type: s.meta.type, tmdbId: String(s.meta.tmdbId), exclude: s.infoHash });
+    if (s.meta.season !== undefined) q.set("season", String(s.meta.season));
+    if (s.meta.episode !== undefined) q.set("episode", String(s.meta.episode));
+    router.replace(`/stream/start?${q}`);
+  };
   const failed = err || (s?.status === "error" ? s.error : "");
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 text-center">
-      <Link href="/admin/media/new" className="absolute left-5 top-5 flex items-center gap-2 text-sm text-muted hover:text-white"><ArrowLeft className="size-4" /> Back</Link>
+      <Link href={home} className="absolute left-5 top-5 flex items-center gap-2 text-sm text-muted hover:text-white"><ArrowLeft className="size-4" /> Back</Link>
       {failed ? (
         <>
           <AlertTriangle className="size-12 text-amber-400" />
           <p className="max-w-md text-lg">{failed}</p>
-          <Button variant="secondary" onClick={() => router.push("/admin/media/new")}>Back to search</Button>
+          <div className="flex gap-3">
+            {s?.meta?.tmdbId && <Button onClick={another}>Try another source</Button>}
+            <Button variant="secondary" onClick={stop}>{s?.meta ? "Go back" : "Back to search"}</Button>
+          </div>
         </>
       ) : s?.status === "choose" ? (
         <div className="w-full max-w-xl text-left">
@@ -60,7 +73,7 @@ export function StreamScreen({ id }: { id: string }) {
           <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto rounded-xl border border-line bg-surface">
             {s.files.filter((f) => f.video).map((f) => (
               <li key={f.index}>
-                <button onClick={() => api(`/api/admin/torrent-streams/${id}`, { method: "POST", body: { action: "select", fileIndex: f.index } }).catch((e) => setErr(e.message))} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-white/5">
+                <button onClick={() => api(`/api/ondemand/${id}`, { method: "POST", body: { action: "select", fileIndex: f.index } }).catch((e) => setErr(e.message))} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-white/5">
                   <FileVideo className="size-5 shrink-0 text-accent" /><span className="min-w-0 flex-1 truncate text-sm">{f.path}</span><span className="shrink-0 text-xs text-muted">{fmtBytes(f.size)}</span>
                 </button>
               </li>
@@ -72,7 +85,7 @@ export function StreamScreen({ id }: { id: string }) {
           <span className="btn-primary flex size-20 items-center justify-center rounded-2xl"><Zap className="size-10 animate-pulse" /></span>
           <div>
             <h1 className="text-2xl font-bold">{!s || s.status === "metadata" ? "Finding peers…" : "Buffering the first few MB…"}</h1>
-            <p className="mx-auto mt-1 max-w-md truncate text-sm text-muted">{s?.fileName ?? s?.name ?? "Connecting"}</p>
+            <p className="mx-auto mt-1 max-w-md truncate text-sm text-muted">{s?.meta ? `${s.meta.title}${s.meta.subtitle ? ` · ${s.meta.subtitle}` : ""}` : s?.fileName ?? s?.name ?? "Connecting"}</p>
           </div>
           <div className="w-full max-w-md space-y-2">
             <ProgressBar value={s?.status === "buffering" ? s.prebuffer : 0} />

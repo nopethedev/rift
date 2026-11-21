@@ -92,3 +92,20 @@ export function scoreTaste(input: TasteInput): TasteScore[] {
   for (const s of input.saved) addTitle(scores, s.genres, SAVED_WEIGHT * decay(s.ageDays));
   return [...scores].map(([key, score]) => ({ key, score })).sort((a, b) => b.score - a.score || TASTE_KEYS.indexOf(a.key) - TASTE_KEYS.indexOf(b.key));
 }
+
+// ---- Recency: recommendations should feel current, not like a "best of all time" list.
+
+/** Popular picks look back this many years; "top rated" rows a bit further (good older titles exist, but not 1960s ones). */
+export const FRESH_YEARS = 10;
+export const TOP_RATED_YEARS = 20;
+
+/** Earliest release year a recommendation may have. */
+export const cutoffYear = (years: number, now = new Date()) => now.getFullYear() - years;
+
+/** TMDB `discover` date filter for the window, e.g. { "primary_release_date.gte": "2016-01-01" }. */
+export const sinceParam = (type: "movie" | "tv", years: number, now = new Date()): Record<string, string> => ({
+  [type === "movie" ? "primary_release_date.gte" : "first_air_date.gte"]: `${cutoffYear(years, now)}-01-01`,
+});
+
+/** Items with an unknown year are kept (we can't tell); known years must be inside the window. */
+export const isRecent = (year: number | null | undefined, years: number, now = new Date()) => !year || year >= cutoffYear(years, now);

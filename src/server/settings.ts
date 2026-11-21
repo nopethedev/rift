@@ -35,6 +35,9 @@ export interface Settings {
   opensubtitlesApiKey: string;
   opensubtitlesUsername: string;
   opensubtitlesPassword: string;
+  /** On-demand streaming (torrent -> player, temporary cache): max simultaneous streams (0 = off) and who may start one. */
+  onDemandMaxStreams: number;
+  onDemandAccess: "admins" | "everyone";
   /** ISO 639-1 codes searched / auto-fetched, in order of preference. */
   subtitleLanguages: string[];
 }
@@ -64,6 +67,8 @@ export const defaultSettings = (): Settings => ({
   opensubtitlesUsername: "",
   opensubtitlesPassword: "",
   subtitleLanguages: ["en"],
+  onDemandMaxStreams: Math.max(0, Number(process.env.STREAM_MAX_SESSIONS) || 3),
+  onDemandAccess: "admins",
 });
 
 let cache: { at: number; value: Settings } | null = null;

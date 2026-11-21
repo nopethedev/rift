@@ -3,7 +3,7 @@ import { db } from "./db";
 import { tmdb, tmdbConfigured } from "./tmdb";
 import { annotateAvailability, tmdbRow } from "./catalog";
 import type { CardItem } from "@/lib/types";
-import { TASTE_GENRES, type TasteScore, parseFavoriteGenres, scoreTaste, tasteGenre, type ListSignal, type WatchSignal } from "@/lib/taste";
+import { FRESH_YEARS, TASTE_GENRES, TOP_RATED_YEARS, type TasteScore, isRecent, parseFavoriteGenres, scoreTaste, sinceParam, tasteGenre, type ListSignal, type WatchSignal } from "@/lib/taste";
 
 const DAY = 86_400_000;
 const parseGenreIds = (raw: string | null): number[] => {
@@ -79,11 +79,17 @@ function blend<T>(lists: T[][], weights: number[], limit: number, keyOf: (t: T) 
   return out;
 }
 
-const discover = (g: NonNullable<ReturnType<typeof tasteGenre>>, sort: "popularity.desc" | "vote_average.desc") =>
-  Promise.all([
-    g.movie ? tmdbRow("/discover/movie", { with_genres: g.movie, sort_by: sort, "vote_count.gte": sort === "vote_average.desc" ? 1500 : 300 }, "movie").catch(() => []) : Promise.resolve([] as CardItem[]),
-    g.tv ? tmdbRow("/discover/tv", { with_genres: g.tv, sort_by: sort, "vote_count.gte": sort === "vote_average.desc" ? 400 : 100 }, "tv").catch(() => []) : Promise.resolve([] as CardItem[]),
+/** TMDB discover for a taste genre, limited to recent releases. `popular` = what people watch now; `rated` = best reviewed of the last 20 years. */
+const discover = (g: NonNullable<ReturnType<typeof tasteGenre>>, kind: "popular" | "rated") => {
+  const years = kind === "popular" ? FRESH_YEARS : TOP_RATED_YEARS;
+  const sort = kind === "popular" ? "popularity.desc" : "vote_average.desc";
+  const votes = kind === "popular" ? { movie: 150, tv: 60 } : { movie: 800, tv: 250 };
+  const fresh = (l: CardItem[]) => l.filter((c) => isRecent(c.year, years));
+  return Promise.all([
+    g.movie ? tmdbRow("/discover/movie", { with_genres: g.movie, sort_by: sort, "vote_count.gte": votes.movie, ...sinceParam("movie", years) }, "movie").then(fresh).catch(() => []) : Promise.resolve([] as CardItem[]),
+    g.tv ? tmdbRow("/discover/tv", { with_genres: g.tv, sort_by: sort, "vote_count.gte": votes.tv, ...sinceParam("tv", years) }, "tv").then(fresh).catch(() => []) : Promise.resolve([] as CardItem[]),
   ]).then(([m, t]) => blend([m, t], [1, 1], 40, (c) => c.key));
+};
 
 /** Library titles that fit the taste, best first (works without TMDB). */
 async function libraryPicks(ranked: TasteScore[], seen: Set<string>): Promise<CardItem[]> {
@@ -123,7 +129,7 @@ export async function tasteRows(profileId: string, profileName: string): Promise
   const usedKeys = new Set<string>();
 
   if (await tmdbConfigured()) {
-    const lists = await Promise.all(top.map((t) => discover(t.genre, "popularity.desc")));
+    const lists = await Promise.all(top.map((t) => discover(t.genre, "popular")));
     const fresh = (l: CardItem[]) => l.filter((c) => !seen.has(c.key));
     const mixed = blend(lists.map(fresh), top.map((_, i) => (i === 0 ? 2 : 1)), 24, (c) => c.key);
     // Playable-now titles first, otherwise keep the blended order.
@@ -131,7 +137,7 @@ export async function tasteRows(profileId: string, profileName: string): Promise
     if (ordered.length >= 6) { rows.push({ title: `Top picks for ${profileName}`, items: ordered }); ordered.forEach((c) => usedKeys.add(c.key)); }
 
     for (const t of top.slice(0, 2)) {
-      const best = (await discover(t.genre, "vote_average.desc")).filter((c) => !seen.has(c.key) && !usedKeys.has(c.key)).slice(0, 20);
+      const best = (await discover(t.genre, "rated")).filter((c) => !seen.has(c.key) && !usedKeys.has(c.key)).slice(0, 20);
       if (best.length >= 6) { rows.push({ title: `Because you like ${t.genre.label}`, items: best }); best.forEach((c) => usedKeys.add(c.key)); }
     }
   }

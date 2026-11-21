@@ -8,7 +8,7 @@ import { annotateAvailability, showPlayTarget, tmdbToCard } from "@/server/catal
 import { type CardItem, fmtDuration, tmdbImg } from "@/lib/types";
 import { Badge, ProgressBar } from "@/components/ui";
 import { Row } from "@/components/row";
-import { TitleActions } from "./actions";
+import { OnDemandEpisode, TitleActions } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -139,10 +139,10 @@ export default async function TitlePage({
               {isTv && d?.number_of_seasons ? <span>{d.number_of_seasons} season{d.number_of_seasons > 1 ? "s" : ""}</span> : null}
               {genres.length > 0 && <span className="text-white/60">{genres.join(" • ")}</span>}
             </div>
-            <TitleActions card={card} playHref={playHref} playLabel={playLabel} trailerKey={trailerKey} resumeFraction={resume ? resume.position / (resume.duration || 1) : null} />
+            <TitleActions card={card} playHref={playHref} playLabel={playLabel} trailerKey={trailerKey} resumeFraction={resume ? resume.position / (resume.duration || 1) : null} stream={isTv ? { season: seasonNumber ?? 1, episode: episodes[0]?.number ?? 1 } : undefined} />
             {!playHref && (
               <p className="text-sm text-muted">
-                This title is discovery-only: it is not in your library yet.
+                This title is not in your library yet.
                 {user.role === "ADMIN" && (
                   <Link href={`/admin/media/new?tmdbId=${tmdbId}&type=${type}`} className="ml-2 inline-flex items-center gap-1 font-semibold text-violet-300 hover:underline"><Download className="size-3.5" /> Add to library</Link>
                 )}
@@ -176,7 +176,7 @@ export default async function TitlePage({
                       <span className="w-6 shrink-0 text-center text-lg text-white/50">{e.number}</span>
                       <div className="relative aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-surface-2 sm:w-40">
                         {e.still && <img src={tmdbImg(e.still, "w342")!} alt="" loading="lazy" className="size-full object-cover" />}
-                        {e.fileId && <span className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100"><Play className="size-7 fill-white" /></span>}
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100"><Play className="size-7 fill-white" /></span>
                         {e.progress ? <div className="absolute inset-x-0 bottom-0"><ProgressBar value={e.progress} className="h-1 rounded-none" /></div> : null}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -194,7 +194,7 @@ export default async function TitlePage({
                       {e.fileId ? (
                         <Link href={`/watch/${e.fileId}`} className="group flex items-center gap-3 p-3 transition hover:bg-white/5">{body}</Link>
                       ) : (
-                        <div className="flex items-center gap-3 p-3 opacity-55">{body}</div>
+                        <OnDemandEpisode tmdbId={tmdbId} season={seasonNumber ?? 1} episode={e.number}>{body}</OnDemandEpisode>
                       )}
                     </li>
                   );

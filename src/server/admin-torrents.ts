@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { NextRequest } from "next/server";
 import { HttpError } from "./api";
 import { resolveTorrentSource, type TorrentSearchResult } from "./torrents/search";
-import { TorrentError } from "./torrents/errors";
+import { TorrentError, isTorrentError } from "./torrents/errors";
 
 export const magnetSchema = z.string().trim().max(8000).regex(/^magnet:\?.*xt=urn:(btih|btmh):/i, "Not a valid magnet link");
 
@@ -50,12 +50,12 @@ export async function readTorrentSource(req: NextRequest): Promise<{ source: Tor
     throw new HttpError(400, "Provide a magnet link, a .torrent file or a search result");
   } catch (e) {
     if (e instanceof z.ZodError) throw new HttpError(400, e.issues[0]?.message ?? "Invalid input");
-    if (e instanceof TorrentError) throw new HttpError(e.status, e.message);
+    if (isTorrentError(e)) throw new HttpError(e.status, e.message);
     throw e;
   }
 }
 
 export function mapTorrentError(e: unknown): never {
-  if (e instanceof TorrentError) throw new HttpError(e.status, e.message);
+  if (isTorrentError(e)) throw new HttpError(e.status, e.message);
   throw e;
 }

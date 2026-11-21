@@ -63,7 +63,7 @@ export function decide(info: PlayerInfo, audioOrdinal: number, forceMode?: PlayM
   return { mode: "hls", reason: "Format not playable directly", audioTranscode: false };
 }
 
-/** Pick the audio codec Mediabunny should encode to: AAC where the browser can encode+play it, otherwise Opus. */
+/** Pick the audio codec Mediabunny should encode to: AAC where the browser can encode+play it, otherwise Opus (e.g. Chromium builds without the AAC encoder). */
 export async function pickAudioEncoder(preferOpus: boolean): Promise<"aac" | "opus"> {
   const { canEncodeAudio } = await import("mediabunny");
   const order: ("aac" | "opus")[] = preferOpus ? ["opus", "aac"] : ["aac", "opus"];

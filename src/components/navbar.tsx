@@ -48,8 +48,8 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
   }
 
   return (
-    <nav className={clsx("fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-6 px-4 transition-colors duration-300 sm:px-12", solid ? "bg-bg/95 shadow-lg backdrop-blur" : "bg-gradient-to-b from-black/80 to-transparent")}>
-      <Link href="/" aria-label="Rift home"><Logo /></Link>
+    <nav className={clsx("fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 px-4 sm:gap-6 transition-colors duration-300 sm:px-12", solid ? "bg-bg/95 shadow-lg backdrop-blur" : "bg-gradient-to-b from-black/80 to-transparent")}>
+      <Link href="/" aria-label="Rift home" className={clsx("shrink-0", searching && "hidden sm:block")}><Logo /></Link>
       <ul className="hidden items-center gap-5 text-sm md:flex">
         {LINKS.map((l) => (
           <li key={l.href}>
@@ -57,8 +57,8 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
           </li>
         ))}
       </ul>
-      <div className="ml-auto flex items-center gap-3">
-        <div className={clsx("flex items-center overflow-hidden rounded-lg border transition-all", searching ? "w-44 border-white/40 bg-black/60 sm:w-64" : "w-9 border-transparent")}>
+      <div className={clsx("flex min-w-0 items-center gap-3", searching ? "flex-1 justify-end" : "ml-auto")}>
+        <div className={clsx("flex items-center overflow-hidden rounded-lg border transition-all", searching ? "min-w-0 flex-1 border-white/40 bg-black/60 sm:w-64 sm:flex-none" : "w-9 border-transparent")}>
           <button aria-label="Search" onClick={() => setSearching(true)} className="flex size-9 shrink-0 items-center justify-center"><Search className="size-5" /></button>
           {searching && (
             <>

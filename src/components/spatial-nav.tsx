@@ -32,9 +32,13 @@ function candidates(active: Element | null): HTMLElement[] {
   // An open modal traps navigation.
   const modals = document.querySelectorAll<HTMLElement>('[aria-modal="true"]');
   const scope: ParentNode = modals.length ? modals[modals.length - 1] : document;
-  // A floating hover preview is only part of the grid while focus is inside it (cards are reached with Down).
-  const inPreview = !!active?.closest("[data-preview]");
-  return [...scope.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => visible(el) && (inPreview || !el.closest("[data-preview]")));
+  // The buttons of an expanded card are only part of the grid while focus is inside that card (reach them with Down).
+  const activeRoot = active?.closest("[data-card-root]") ?? null;
+  return [...scope.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => {
+    if (!visible(el)) return false;
+    const actions = el.closest("[data-card-actions]");
+    return !actions || actions.closest("[data-card-root]") === activeRoot;
+  });
 }
 
 /** Whether the focused element wants this arrow key for itself (text caret, native slider, dropdown…). */
@@ -94,15 +98,15 @@ export function SpatialNav() {
       if (!dir || e.shiftKey) return;
       if (ownsKey(active, dir)) return;
 
-      // Hover preview (opens when a card is selected for a moment): Down enters it, Up leaves it back to the card.
-      const preview = document.querySelector<HTMLElement>("[data-preview]");
-      if (preview) {
+      // An expanded card (a selected card, after a moment): Down enters its buttons, Up leaves them back to the card.
+      const root = active?.closest<HTMLElement>("[data-card-root]");
+      if (root && root.hasAttribute("data-expanded")) {
         if (dir === "down" && active?.hasAttribute("data-card")) {
-          const first = [...preview.querySelectorAll<HTMLElement>(FOCUSABLE)].find(visible);
+          const first = [...root.querySelectorAll<HTMLElement>("[data-card-actions] " + FOCUSABLE.split(", ").join(", [data-card-actions] "))].find(visible);
           if (first) { e.preventDefault(); first.focus({ preventScroll: true }); return; }
         }
-        if (dir === "up" && active && preview.contains(active)) {
-          const card = document.elementsFromPoint(+preview.dataset.ox!, +preview.dataset.oy!).find((el): el is HTMLElement => el instanceof HTMLElement && el.hasAttribute("data-card"));
+        if (dir === "up" && active?.closest("[data-card-actions]")) {
+          const card = root.querySelector<HTMLElement>("[data-card]");
           if (card) { e.preventDefault(); card.focus({ preventScroll: true }); return; }
         }
       }

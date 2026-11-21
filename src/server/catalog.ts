@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "./db";
 import { tmdb, tmdbConfigured, getRecommendations } from "./tmdb";
 import type { CardItem, MediaKind } from "@/lib/types";
+import { TOP_RATED_YEARS, isRecent } from "@/lib/taste";
 
 /** Raw TMDB list result -> CardItem (availability filled in later). */
 export function tmdbToCard(r: any, forced?: MediaKind): CardItem | null {
@@ -174,7 +175,7 @@ export async function recommendations(profileId: string, max = 2): Promise<{ tit
   for (const s of seeds.slice(0, max)) {
     try {
       const data = await getRecommendations(s.type, s.tmdbId);
-      const cards = (data.results ?? []).map((r: any) => tmdbToCard(r, s.type)).filter((c: CardItem | null): c is CardItem => !!c && !!c.posterPath && !watched.has(c.key));
+      const cards = (data.results ?? []).map((r: any) => tmdbToCard(r, s.type)).filter((c: CardItem | null): c is CardItem => !!c && !!c.posterPath && !watched.has(c.key) && isRecent(c.year, TOP_RATED_YEARS));
       if (cards.length >= 4) rows.push({ title: `Because you watched ${s.title}`, items: await annotateAvailability(cards) });
     } catch {
       /* TMDB hiccup: skip the row */

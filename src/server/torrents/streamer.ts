@@ -8,7 +8,7 @@ import { probeFile, type ProbeResult } from "@shared/probe";
 import { TorrentError } from "./errors";
 import { parseMagnet, parseTorrentFile } from "./metainfo";
 import { freeBytes } from "./storage";
-import { isVideoFile } from "../library/filename";
+import { isVideoFile, parseMediaFilename } from "../library/filename";
 
 /**
  * On-demand torrent streaming.
@@ -18,6 +18,17 @@ import { isVideoFile } from "../library/filename";
  * torrent with a sliding critical read-ahead window. The player sends a heartbeat; a session with no activity for
  * STREAM_IDLE_SECONDS (default 60) is destroyed and its files are deleted. Nothing is added to the library.
  */
+
+/** What the player shows for a stream that was started from a title (instead of the raw torrent name). */
+export interface StreamMeta {
+  title: string;
+  subtitle?: string;
+  backPath?: string;
+  type?: "movie" | "tv";
+  tmdbId?: number;
+  season?: number;
+  episode?: number;
+}
 
 export type StreamStatus = "metadata" | "choose" | "buffering" | "ready" | "error";
 
@@ -42,6 +53,9 @@ export interface StreamView {
   idleLimit: number;
   createdAt: string;
   probe: { durationSec: number; container: string } | null;
+  meta: StreamMeta | null;
+  /** Number of users attached to this stream (the same torrent is shared). */
+  viewers: number;
 }
 
 interface WtFile { path: string; length: number; offset: number; downloaded: number; _startPiece: number; _endPiece: number; select(p?: number): void; deselect(): void; createReadStream(o?: { start?: number; end?: number }): Readable }
@@ -73,6 +87,8 @@ interface Session {
   probe: ProbeResult | null;
   ticker: ReturnType<typeof setInterval> | null;
   tailRetried?: boolean;
+  owners: Set<string>;
+  meta: StreamMeta | null;
 }
 
 /** Public trackers appended to every stream to find peers faster. */
@@ -86,7 +102,6 @@ const EXTRA_TRACKERS = [
 ];
 
 const IDLE_SECONDS = Math.max(15, Number(process.env.STREAM_IDLE_SECONDS) || 60);
-const MAX_SESSIONS = Math.max(1, Number(process.env.STREAM_MAX_SESSIONS) || 3);
 const PREBUFFER_BYTES = Math.max(1, Number(process.env.STREAM_PREBUFFER_MB) || 8) * 1024 * 1024;
 const TAIL_BYTES = 2 * 1024 * 1024;
 const READAHEAD_BYTES = 24 * 1024 * 1024;
@@ -165,7 +180,19 @@ export class TorrentStreamer {
       idleLimit: IDLE_SECONDS,
       createdAt: new Date(s.createdAt).toISOString(),
       probe: s.probe ? { durationSec: s.probe.durationSec, container: s.probe.container } : null,
+      meta: s.meta,
+      viewers: s.owners.size,
     };
+  }
+
+  /** Whether `userId` started (or joined) this stream. Unknown ids are reported as not owned. */
+  isOwner(id: string, userId: string): boolean {
+    return !!this.sessions.get(id)?.owners.has(userId);
+  }
+
+  /** Sessions in use vs. the configured maximum. */
+  async capacity(): Promise<{ used: number; max: number }> {
+    return { used: this.sessions.size, max: (await getSettings()).onDemandMaxStreams };
   }
 
   private fail(s: Session, msg: string) {
@@ -176,7 +203,7 @@ export class TorrentStreamer {
   }
 
   /** Start streaming a magnet or .torrent. Returns immediately; poll `get()` for progress. */
-  async start(input: { magnet?: string; torrentFile?: Buffer; fileIndex?: number }): Promise<StreamView> {
+  async start(input: { magnet?: string; torrentFile?: Buffer; fileIndex?: number; ownerId?: string; meta?: StreamMeta; episode?: { season: number; episode: number } }): Promise<StreamView> {
     await this.ensureStarted();
     let infoHash: string;
     let source: string | Uint8Array;
@@ -197,10 +224,13 @@ export class TorrentStreamer {
     const existing = [...this.sessions.values()].find((s) => s.infoHash === infoHash);
     if (existing) {
       existing.lastActivity = Date.now();
+      if (input.ownerId) existing.owners.add(input.ownerId);
       if (input.fileIndex !== undefined && existing.status === "choose") await this.selectFile(existing.id, input.fileIndex);
       return this.view(existing);
     }
-    if (this.sessions.size >= MAX_SESSIONS) throw new TorrentError(`Maximum of ${MAX_SESSIONS} simultaneous streams reached. Stop one first.`, 429);
+    const max = (await getSettings()).onDemandMaxStreams;
+    if (max < 1) throw new TorrentError("On-demand streaming is turned off on this server.", 403);
+    if (this.sessions.size >= max) throw new TorrentError(`The server is at its limit of ${max} simultaneous on-demand stream${max === 1 ? "" : "s"}. Try again in a minute.`, 429);
 
     const root = await this.root();
     const free = await freeBytes(root);
@@ -220,12 +250,15 @@ export class TorrentStreamer {
     const s: Session = {
       id, infoHash, dir, torrent, status: "metadata", error: null, file: null, fileIndex: null, fileList: [], preHead: null, preTail: null,
       prebuffer: 0, lastActivity: Date.now(), createdAt: Date.now(), probe: null, ticker: null,
+      owners: new Set(input.ownerId ? [input.ownerId] : []), meta: input.meta ?? null,
     };
     this.sessions.set(id, s);
 
+    // Auto-picked sources get a shorter leash: a dead one should fail fast so the next-best can be tried.
+    const metaMs = input.meta ? 30_000 : METADATA_TIMEOUT;
     const metaTimer = setTimeout(() => {
-      if (s.status === "metadata") this.fail(s, "Could not fetch torrent metadata within 60 s (no reachable peers?)");
-    }, METADATA_TIMEOUT);
+      if (s.status === "metadata") this.fail(s, `Could not fetch torrent metadata within ${metaMs / 1000} s (no reachable peers?)`);
+    }, metaMs);
     torrent.on("error", (e: unknown) => { clearTimeout(metaTimer); this.fail(s, `Torrent error: ${errMsg(e)}`); });
     torrent.on("warning", () => {});
     torrent.once("ready", () => {
@@ -237,7 +270,13 @@ export class TorrentStreamer {
         const vids = s.fileList.filter((f) => f.video).sort((a, b) => b.size - a.size);
         if (!vids.length) return this.fail(s, "This torrent contains no video files");
         const big = vids.filter((v) => v.size > 50 * 1024 * 1024);
+        // A season pack for a known episode: pick that file automatically.
+        const want = input.episode;
+        const byEpisode = want
+          ? vids.find((v) => { const p = parseMediaFilename(v.path); return p.episode === want.episode && (p.season === undefined || p.seasonGuessed || p.season === want.season); })
+          : undefined;
         if (input.fileIndex !== undefined) void this.selectFile(id, input.fileIndex).catch((e) => this.fail(s, errMsg(e)));
+        else if (byEpisode) void this.selectFile(id, byEpisode.index).catch((e) => this.fail(s, errMsg(e)));
         else if (big.length > 1) s.status = "choose"; // e.g. a season pack: let the admin pick an episode
         else void this.selectFile(id, vids[0].index).catch((e) => this.fail(s, errMsg(e)));
       } catch (e) {

@@ -1,15 +1,19 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CardItem } from "@/lib/types";
 import { api } from "./ui";
-import { HoverPreview } from "./hover-preview";
+import { PreviewSheet } from "./hover-preview";
 
 interface Ctx {
   inList: (item: Pick<CardItem, "type" | "tmdbId">) => boolean;
   toggleList: (item: Pick<CardItem, "type" | "tmdbId" | "title" | "posterPath">) => Promise<void>;
-  openPreview: (item: CardItem, rect: DOMRect, sheet: boolean) => void;
-  keepPreview: () => void;
-  closePreview: (delay?: number) => void;
+  /** Touch: open the bottom sheet (trailer + actions) for a card. */
+  openSheet: (item: CardItem) => void;
+  /** On-demand streaming (torrent) is available to this account. */
+  onDemand: boolean;
+  /** Start an on-demand stream for a title that is not in the library. */
+  playOnDemand: (item: Pick<CardItem, "type" | "tmdbId">, season?: number, episode?: number) => void;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -19,12 +23,11 @@ export const useApp = () => {
   return c;
 };
 
-interface PreviewState { item: CardItem; rect: DOMRect; sheet: boolean }
 
-export function AppProviders({ children }: { children: React.ReactNode }) {
+export function AppProviders({ children, onDemand = false }: { children: React.ReactNode; onDemand?: boolean }) {
+  const router = useRouter();
   const [list, setList] = useState<Set<string>>(new Set());
-  const [preview, setPreview] = useState<PreviewState | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sheet, setSheet] = useState<CardItem | null>(null);
 
   useEffect(() => {
     api<{ items: { tmdbId: number; mediaType: string }[] }>("/api/watchlist")
@@ -57,25 +60,22 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     [list],
   );
 
-  const keepPreview = useCallback(() => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = null;
-  }, []);
-  const closePreview = useCallback((delay = 140) => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setPreview(null), delay);
-  }, []);
-  const openPreview = useCallback((item: CardItem, rect: DOMRect, sheet: boolean) => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    setPreview({ item, rect, sheet });
-  }, []);
+  const openSheet = useCallback((item: CardItem) => setSheet(item), []);
 
-  const value = useMemo(() => ({ inList, toggleList, openPreview, keepPreview, closePreview }), [inList, toggleList, openPreview, keepPreview, closePreview]);
+  const playOnDemand = useCallback<Ctx["playOnDemand"]>((i, season, episode) => {
+    if (!i.tmdbId) return;
+    const q = new URLSearchParams({ type: i.type, tmdbId: String(i.tmdbId) });
+    if (i.type === "tv") { q.set("season", String(season ?? 1)); q.set("episode", String(episode ?? 1)); }
+    setSheet(null);
+    router.push(`/stream/start?${q}`);
+  }, [router]);
+
+  const value = useMemo(() => ({ inList, toggleList, openSheet, onDemand, playOnDemand }), [inList, toggleList, openSheet, onDemand, playOnDemand]);
 
   return (
     <AppCtx.Provider value={value}>
       {children}
-      {preview && <HoverPreview key={preview.item.key} {...preview} onClose={() => setPreview(null)} />}
+      {sheet && <PreviewSheet key={sheet.key} item={sheet} onClose={() => setSheet(null)} />}
     </AppCtx.Provider>
   );
 }

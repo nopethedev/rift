@@ -105,13 +105,13 @@ Creating a profile asks for **3 favourite genres** (kids profiles skip it; you c
 - watched titles count by completion (finished > half-watched; accidental starts are ignored) and fade with a 90-day half-life,
 - My List adds a deliberate signal.
 
-The home page shows **Top picks for <profile>** (a blend of the top genres, library titles first), **Because you like <genre>** rows (top rated) and **From your library, for you**. Anything already watched or saved is left out. Works without TMDB for library titles.
+The home page shows **Top picks for <profile>** (a blend of the top genres, library titles first), **Because you like <genre>** rows (top rated) and **From your library, for you**. Anything already watched or saved is left out. Recommendations are limited to recent releases (popular picks: last 10 years, top-rated: last 20), so you don't get a "best of all time" list. Works without TMDB for library titles.
 
 ## TV and keyboard navigation
 
 Arrow keys move a focus highlight through the whole UI (a TV remote sends arrow keys + Enter/OK), so a PC browser behaves like a TV app.
 
-- **Browse**: ←→↑↓ move between cards, rows, buttons and the nav bar; Enter opens; the focused card grows and, after a moment, opens its trailer preview (↓ enters the preview's buttons, ↑ leaves).
+- **Browse**: ←→↑↓ move between cards, rows, buttons and the nav bar; Enter opens; the focused card grows and, after a moment, expands in place to 16:9 with its trailer (↓ enters its Play / My List / info buttons, ↑ leaves).
 - **Player**: with no control focused, ←/→ seek ±10 s and Enter plays/pauses; ↑/↓ reveal the controls and move into them (↓ from the seek bar goes to Play). Back keys (Backspace in TV mode, Tizen/webOS back) leave the player.
 - **Search / forms**: arrows keep working inside text fields (↑↓ leave the field).
 - **10-foot mode** (bigger type, no cursor) turns on automatically in TV browsers (Tizen, webOS, Android TV, …). Toggle with `?tv=1` / `?tv=0` or *Account menu → TV mode*.
@@ -125,7 +125,13 @@ Arrow keys move a focus highlight through the whole UI (a TV remote sends arrow 
 3. The headers are probed and the player starts. Playback is served as HTTP range requests straight from the torrent with a 24 MB critical read-ahead window that follows the playhead; seeking re-prioritises the pieces at the new position. The rest of the file downloads in the background.
 4. The player sends a **heartbeat every 15 s**. With no heartbeat/activity for `STREAM_IDLE_SECONDS` (default **60**) the torrent is destroyed and its files are deleted from `<downloadDir>/.stream-cache`. Leftovers from a crash are wiped on boot. *Active streams* shows live sessions with *Stop & delete*.
 
-Playback uses direct play or in-browser Mediabunny (so DD+ still works); video the browser can't decode can't be server-transcoded from a partial file — add that torrent to the library instead. Tunables: `STREAM_IDLE_SECONDS`, `STREAM_PREBUFFER_MB`, `STREAM_MAX_SESSIONS` (default 3).
+Playback uses direct play or in-browser Mediabunny (so DD+ still works); video the browser can't decode can't be server-transcoded from a partial file — add that torrent to the library instead. Tunables: `STREAM_IDLE_SECONDS`, `STREAM_PREBUFFER_MB`.
+
+**Play on any title.** Titles that aren't in your library get a **Play** button (poster preview, title page, and each episode of a show). Rift looks the title up on TMDB, searches your torrent sources, picks the release that will play best in a browser (1080p/720p H.264, AAC or Dolby Digital(+) audio, healthy seeders, sane size; it avoids CAMs, 10-bit, HDR/remux and DTS/TrueHD) and starts the stream. Season packs are handled: the right episode file is picked automatically. If a source is dead, *Try another source* uses the next best.
+
+**Limits (Settings → On-demand streaming).** *Max simultaneous streams* (0 turns the feature off; default 3, from `STREAM_MAX_SESSIONS`) protects small disks: every active stream keeps a temporary copy, deleted about a minute after the viewer leaves. Over the limit, viewers are told to try again shortly. *Who can start a stream*: administrators only (default) or everyone with an account. Users only ever reach streams they started, and they cannot submit their own magnet links; the server does the searching. The same torrent requested twice shares one stream and one slot.
+
+**Audio:** Dolby Digital / Digital Plus (DD+ 5.1 etc.) is decoded in the browser with Mediabunny and re-encoded to **AAC** in real time (seeking works; the encoder restarts at the new position). Browsers without an AAC encoder (e.g. some Chromium builds, Linux) fall back to Opus.
 
 > Only download or upload content you own or are licensed to use. Nothing is ever downloaded automatically from TMDB discovery results.
 

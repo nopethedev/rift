@@ -33,9 +33,7 @@ export function Row({ title, items, href }: { title: string; items: CardItem[]; 
         )}
         <div ref={scroller} onScroll={update} className="no-scrollbar flex snap-x gap-2.5 overflow-x-auto scroll-smooth px-4 py-3 sm:px-12">
           {items.map((it) => (
-            <div key={it.key} className="w-[118px] shrink-0 snap-start sm:w-[150px] lg:w-[178px]">
-              <PosterCard item={it} />
-            </div>
+            <PosterCard key={it.key} item={it} inline className="snap-start" />
           ))}
         </div>
         {edge.right && (

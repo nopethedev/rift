@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PICK_COUNT, parseFavoriteGenres, scoreTaste, tasteKeyOfId, TASTE_GENRES } from "./taste";
+import { FRESH_YEARS, cutoffYear, isRecent, sinceParam, PICK_COUNT, parseFavoriteGenres, scoreTaste, tasteKeyOfId, TASTE_GENRES } from "./taste";
 
 const SCIFI = 878, COMEDY = 35, HORROR = 27, TV_SCIFI = 10765;
 const w = (genres: number[], over: Partial<{ fraction: number; completed: boolean; ageDays: number }> = {}) => ({ genres, fraction: 1, completed: true, ageDays: 1, ...over });
@@ -37,5 +37,15 @@ describe("taste", () => {
     const [a] = scoreTaste({ picks: [], watched: [w([SCIFI, COMEDY])], saved: [] });
     const [b] = scoreTaste({ picks: [], watched: [w([SCIFI])], saved: [] });
     expect(a.score).toBeLessThan(b.score);
+  });
+
+  it("windows recommendations to recent years", () => {
+    const now = new Date("2026-11-21");
+    expect(cutoffYear(FRESH_YEARS, now)).toBe(2016);
+    expect(sinceParam("movie", 10, now)).toEqual({ "primary_release_date.gte": "2016-01-01" });
+    expect(sinceParam("tv", 20, now)).toEqual({ "first_air_date.gte": "2006-01-01" });
+    expect(isRecent(1994, 10, now)).toBe(false);
+    expect(isRecent(2016, 10, now)).toBe(true);
+    expect(isRecent(null, 10, now)).toBe(true);
   });
 });

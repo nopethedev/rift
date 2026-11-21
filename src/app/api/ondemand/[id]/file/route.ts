@@ -1,8 +1,9 @@
 import path from "node:path";
 import type { NextRequest } from "next/server";
 import { getAuth } from "@/server/auth";
+import { onDemandAllowed } from "@/server/ondemand";
 import { getTorrentStreamer } from "@/server/torrents/streamer";
-import { TorrentError } from "@/server/torrents/errors";
+import { TorrentError, isTorrentError } from "@/server/torrents/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 3600;
@@ -13,14 +14,15 @@ const MIME: Record<string, string> = { ".mp4": "video/mp4", ".m4v": "video/mp4",
 async function serve(req: NextRequest, ctx: { params: Promise<{ id: string }> }, head: boolean) {
   const auth = await getAuth();
   if (!auth) return new Response("Unauthorized", { status: 401 });
-  if (auth.user.role !== "ADMIN") return new Response("Forbidden", { status: 403 });
   const { id } = await ctx.params;
+  if (auth.user.role !== "ADMIN" && !(await onDemandAllowed(auth))) return new Response("Forbidden", { status: 403 });
+  if (auth.user.role !== "ADMIN" && !getTorrentStreamer().isOwner(id, auth.user.id)) return new Response("Not found", { status: 404 });
   const st = getTorrentStreamer();
   let view;
   try {
     view = st.get(id);
   } catch (e) {
-    return new Response(e instanceof TorrentError ? e.message : "Not found", { status: 404 });
+    return new Response(isTorrentError(e) ? e.message : "Not found", { status: 404 });
   }
   if (view.status !== "ready" || !view.fileName) return new Response("Stream is not ready", { status: 409 });
   const size = view.fileSize;
@@ -59,8 +61,8 @@ async function serve(req: NextRequest, ctx: { params: Promise<{ id: string }> },
     req.signal.addEventListener("abort", () => void chunks.return(undefined), { once: true });
     return new Response(body, { status, headers });
   } catch (e) {
-    if (!(e instanceof TorrentError)) console.error("[stream] range error:", e);
-    return new Response(e instanceof TorrentError ? e.message : "Stream error", { status: e instanceof TorrentError ? e.status : 500 });
+    if (!(isTorrentError(e))) console.error("[stream] range error:", e);
+    return new Response(isTorrentError(e) ? e.message : "Stream error", { status: isTorrentError(e) ? e.status : 500 });
   }
 }
 

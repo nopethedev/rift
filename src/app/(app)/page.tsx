@@ -4,7 +4,7 @@ import { Film, KeyRound, Sparkles } from "lucide-react";
 import { requireProfile } from "@/server/auth";
 import { db } from "@/server/db";
 import { tasteRows } from "@/server/taste";
-import { parseFavoriteGenres } from "@/lib/taste";
+import { parseFavoriteGenres, sinceParam } from "@/lib/taste";
 import { tmdbConfigured } from "@/server/tmdb";
 import { continueWatching, myList, recentlyAdded, recommendations, tmdbRow } from "@/server/catalog";
 import { Hero } from "@/components/hero";
@@ -100,10 +100,10 @@ export default async function HomePage() {
               <Suspense fallback={sk}><AsyncRow title="Trending This Week" load={tmdbRow("/trending/all/week")} /></Suspense>
               <Suspense fallback={sk}><AsyncRow title="Popular Movies" load={tmdbRow("/movie/popular", {}, "movie")} /></Suspense>
               <Suspense fallback={sk}><AsyncRow title="Popular TV Shows" load={tmdbRow("/tv/popular", {}, "tv")} /></Suspense>
-              <Suspense fallback={sk}><AsyncRow title="Top Rated Movies" load={tmdbRow("/movie/top_rated", {}, "movie")} /></Suspense>
+              <Suspense fallback={sk}><AsyncRow title="Top Rated Movies of the Last 15 Years" load={tmdbRow("/discover/movie", { sort_by: "vote_average.desc", "vote_count.gte": 2000, ...sinceParam("movie", 15) }, "movie")} /></Suspense>
               {GENRE_ROWS.map((g) => (
                 <Suspense key={g.title} fallback={sk}>
-                  <AsyncRow title={g.title} load={tmdbRow(`/discover/${g.type}`, { with_genres: String(g.g).replace(",", "|"), sort_by: "popularity.desc", "vote_count.gte": 200 }, g.type)} />
+                  <AsyncRow title={g.title} load={tmdbRow(`/discover/${g.type}`, { with_genres: String(g.g).replace(",", "|"), sort_by: "popularity.desc", "vote_count.gte": 200, ...sinceParam(g.type, 15) }, g.type)} />
                 </Suspense>
               ))}
             </>
