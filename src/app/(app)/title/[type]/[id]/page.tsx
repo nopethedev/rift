@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { Download, Library, Play, Settings2 } from "lucide-react";
+import { Download, Library, Play, Settings2, Zap } from "lucide-react";
 import { db } from "@/server/db";
 import { requireProfile } from "@/server/auth";
 import { getMovie, getTv, getSeason, getRecommendations, pickTrailer, tmdbConfigured } from "@/server/tmdb";
@@ -145,6 +145,9 @@ export default async function TitlePage({
                 This title is discovery-only: it is not in your library yet.
                 {user.role === "ADMIN" && (
                   <Link href={`/admin/media/new?tmdbId=${tmdbId}&type=${type}`} className="ml-2 inline-flex items-center gap-1 font-semibold text-violet-300 hover:underline"><Download className="size-3.5" /> Add to library</Link>
+                )}
+                {user.role === "ADMIN" && (
+                  <Link href={`/admin/media/new?tmdbId=${tmdbId}&type=${type}&source=torrent`} className="ml-3 inline-flex items-center gap-1 font-semibold text-violet-300 hover:underline"><Zap className="size-3.5" /> Stream via torrent</Link>
                 )}
               </p>
             )}

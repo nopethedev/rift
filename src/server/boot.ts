@@ -11,6 +11,8 @@ export async function bootServices() {
     await db.setting.count();
     const { getTorrentManager } = await import("./torrents/manager");
     await getTorrentManager().init();
+    const { getTorrentStreamer } = await import("./torrents/streamer");
+    await getTorrentStreamer().init();
     const { startLibraryWatcher } = await import("./library/scanner");
     startLibraryWatcher();
     console.log("[rift] background services started");

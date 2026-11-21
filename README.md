@@ -65,6 +65,17 @@ Mediabunny is *enforced* for DD/DD+ audio (setting *Convert Dolby Digital in the
 
 Subtitles: SRT, VTT, ASS/SSA (converted to WebVTT; embedded text tracks are extracted on import).
 
+### On-demand streaming (torrent → player, no library import)
+
+*Add media → Search & torrent → **Stream*** (or **Stream now** after pasting a magnet / `.torrent`, or **Stream via torrent** on a discovery title page). Admin only.
+
+1. Rift fetches the metadata and picks the video file (season packs ask you to choose an episode).
+2. **Pre-buffer:** only the start (≈0.5 % of the file, 1.5–6 MB) and the last 2 MB (container index) are requested, at top priority, with extra public trackers for fast peer discovery.
+3. The headers are probed and the player starts. Playback is served as HTTP range requests straight from the torrent with a 24 MB critical read-ahead window that follows the playhead; seeking re-prioritises the pieces at the new position. The rest of the file downloads in the background.
+4. The player sends a **heartbeat every 15 s**. With no heartbeat/activity for `STREAM_IDLE_SECONDS` (default **60**) the torrent is destroyed and its files are deleted from `<downloadDir>/.stream-cache`. Leftovers from a crash are wiped on boot. *Active streams* shows live sessions with *Stop & delete*.
+
+Playback uses direct play or in-browser Mediabunny (so DD+ still works); video the browser can't decode can't be server-transcoded from a partial file — add that torrent to the library instead. Tunables: `STREAM_IDLE_SECONDS`, `STREAM_PREBUFFER_MB`, `STREAM_MAX_SESSIONS` (default 3).
+
 > Only download or upload content you own or are licensed to use. Nothing is ever downloaded automatically from TMDB discovery results.
 
 ## Layout

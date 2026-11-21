@@ -21,7 +21,11 @@ const codecLabel = (c: string) => ({ eac3: "Dolby Digital+", ac3: "Dolby Digital
 
 type Menu = null | "subs" | "audio" | "quality" | "speed";
 
-export function Player({ fileId }: { fileId: string }) {
+export function Player({ fileId, torrent = false }: { fileId: string; torrent?: boolean }) {
+  // Torrent streams: served by /api/admin/torrent-streams/:id, kept alive by a heartbeat, no server transcode.
+  const urls = torrent
+    ? { info: `/api/admin/torrent-streams/${fileId}/info`, file: `/api/admin/torrent-streams/${fileId}/file`, beat: `/api/admin/torrent-streams/${fileId}` }
+    : { info: `/api/media/${fileId}/info`, file: `/api/stream/${fileId}`, beat: "" };
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -58,7 +62,7 @@ export function Player({ fileId }: { fileId: string }) {
   /* ---- load info ---- */
   useEffect(() => {
     let live = true;
-    fetch(`/api/media/${fileId}/info`)
+    fetch(urls.info)
       .then(async (r) => { if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load media"); return r.json() as Promise<PlayerInfo>; })
       .then((i) => {
         if (!live) return;
@@ -84,18 +88,23 @@ export function Player({ fileId }: { fileId: string }) {
     setError("");
 
     (async () => {
-      const d = decide(info, audioOrdinal, forceHls ? "hls" : undefined);
+      const d = decide(info, audioOrdinal, forceHls && !torrent ? "hls" : undefined);
       setMode(d.mode);
       setDetail(d.reason);
+      if (torrent && d.mode === "hls") {
+        setError(`${d.reason}. On-demand streams can't be transcoded on the server — add this torrent to the library instead.`);
+        setBusy(false);
+        return;
+      }
       let engine: Engine;
       try {
         if (d.mode === "direct") {
-          engine = await startDirect(video, `/api/stream/${fileId}`, resumeAt);
+          engine = await startDirect(video, urls.file, resumeAt);
         } else if (d.mode === "mediabunny") {
           const track = info.audio[audioOrdinal] ?? info.audio[0];
           const audioCodec = await pickAudioEncoder(info.video?.codec === "vp9" || info.video?.codec === "av1");
           const e = new MediabunnyEngine(video, {
-            url: `/api/stream/${fileId}`, durationSec: info.durationSec, audioOrdinal, audioCodec, sourceAudioCodec: track?.codec,
+            url: urls.file, durationSec: info.durationSec, audioOrdinal, audioCodec, sourceAudioCodec: track?.codec,
             onBusy: (b) => !cancelled && setBusy(b), onError: (m) => !cancelled && setError(m),
           });
           engine = e;
@@ -114,7 +123,7 @@ export function Player({ fileId }: { fileId: string }) {
         if (!cancelled) {
           const msg = (e as Error).message;
           // Browser can't do the in-browser path: fall back to a server transcode once.
-          if (!forceHls && d.mode === "mediabunny") { setForceHls(true); startAtRef.current = resumeAt; return; }
+          if (!torrent && !forceHls && d.mode === "mediabunny") { setForceHls(true); startAtRef.current = resumeAt; return; }
           setError(msg);
           setBusy(false);
         }
@@ -180,15 +189,25 @@ export function Player({ fileId }: { fileId: string }) {
   /* ---- progress heartbeat + stream registration ---- */
   const save = useCallback((force = false) => {
     const v = videoRef.current;
-    if (!v || !info || (!force && Date.now() - lastSave.current < 9000)) return;
+    if (torrent || !v || !info || (!force && Date.now() - lastSave.current < 9000)) return;
     lastSave.current = Date.now();
     fetch("/api/progress", {
       method: "POST", keepalive: true, headers: { "content-type": "application/json" },
       body: JSON.stringify({ mediaFileId: fileId, position: v.currentTime, duration: info.durationSec || v.duration || 0, streamId: streamId.current, mode, detail }),
     }).catch(() => {});
-  }, [fileId, info, mode, detail]);
+  }, [fileId, info, mode, detail, torrent]);
   useEffect(() => { if (playing) save(); }, [time, playing, save]);
+  // Torrent streams: heartbeat every 15 s (even while paused) so the server keeps the data; ~1 min of silence deletes it.
   useEffect(() => {
+    if (!torrent) return;
+    const beat = () => fetch(urls.beat, { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "heartbeat" }) }).catch(() => {});
+    beat();
+    const t = setInterval(beat, 15000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [torrent, fileId]);
+  useEffect(() => {
+    if (torrent) return;
     const sid = streamId.current;
     const bye = () => { save(true); fetch(`/api/progress?streamId=${sid}`, { method: "DELETE", keepalive: true }).catch(() => {}); };
     window.addEventListener("pagehide", bye);
@@ -271,7 +290,7 @@ export function Player({ fileId }: { fileId: string }) {
           <AlertTriangle className="size-12 text-amber-400" />
           <p className="max-w-lg text-lg">{error}</p>
           <div className="flex gap-3">
-            {mode !== "hls" && <button onClick={() => { setError(""); startAtRef.current = videoRef.current?.currentTime ?? null; setForceHls(true); }} className="btn-primary rounded-lg px-5 py-2.5 font-semibold">Try server transcode</button>}
+            {mode !== "hls" && !torrent && <button onClick={() => { setError(""); startAtRef.current = videoRef.current?.currentTime ?? null; setForceHls(true); }} className="btn-primary rounded-lg px-5 py-2.5 font-semibold">Try server transcode</button>}
             <button onClick={back} className="rounded-lg border border-white/20 px-5 py-2.5 font-semibold hover:bg-white/10">Go back</button>
           </div>
         </div>
@@ -347,13 +366,13 @@ export function Player({ fileId }: { fileId: string }) {
                       </MenuItem>
                     ))}
                   </MenuBtn>
-                  <MenuBtn icon={<Settings className="size-6" />} label="Quality" open={menu === "quality"} onToggle={() => setMenu(menu === "quality" ? null : "quality")}>
+                  {!torrent && <MenuBtn icon={<Settings className="size-6" />} label="Quality" open={menu === "quality"} onToggle={() => setMenu(menu === "quality" ? null : "quality")}>
                     {mode !== "hls" && <MenuItem checked={quality === "auto"} onClick={() => pickQuality("auto")}>Original{info.video ? ` (${info.video.height}p)` : ""}</MenuItem>}
                     {mode === "hls" && <MenuItem checked={quality === "auto"} onClick={() => pickQuality("auto")}>Auto</MenuItem>}
                     {(mode === "hls" && heights.length ? heights : info.ladder.filter((h) => !info.video || h <= info.video.height)).map((h) => (
                       <MenuItem key={h} checked={quality === h} onClick={() => pickQuality(h)}>{h}p{mode !== "hls" && <span className="text-white/50"> · server transcode</span>}</MenuItem>
                     ))}
-                  </MenuBtn>
+                  </MenuBtn>}
                   <MenuBtn icon={<Gauge className="size-6" />} label="Playback speed" open={menu === "speed"} onToggle={() => setMenu(menu === "speed" ? null : "speed")}>
                     {SPEEDS.map((s) => <MenuItem key={s} checked={speed === s} onClick={() => { setSpeed(s); if (videoRef.current) videoRef.current.playbackRate = s; setMenu(null); }}>{s === 1 ? "Normal" : `${s}×`}</MenuItem>)}
                   </MenuBtn>
