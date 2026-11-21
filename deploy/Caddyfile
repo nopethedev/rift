@@ -1,0 +1,7 @@
+# Automatic HTTPS for Rift. RIFT_DOMAIN comes from .env (e.g. rift.example.com).
+{$RIFT_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000 {
+		flush_interval -1
+	}
+}

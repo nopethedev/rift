@@ -38,6 +38,23 @@ docker compose up -d --build
 - Hardware acceleration: uncomment the `devices` / `deploy` blocks on the `worker` service (VAAPI/QSV via `/dev/dri`, NVENC via the NVIDIA runtime), then choose it in Admin → Settings.
 - Put a reverse proxy with HTTPS in front and set `COOKIE_SECURE=true`.
 
+## Deploy on a VPS (prebuilt image, no build on the server)
+
+Every push to `main` is built by GitHub Actions (`.github/workflows/docker.yml`: typecheck + tests, then amd64 and arm64 on native runners) and published to **GitHub Container Registry** as `ghcr.io/nopethedev/rift` (`latest`, `sha-<commit>`, and `1.2.3` / `1.2` for `v1.2.3` git tags). A server only pulls it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nopethedev/rift/main/deploy/install.sh | sh
+# with HTTPS on your own domain (DNS must already point at the server, ports 80/443 open):
+curl -fsSL https://raw.githubusercontent.com/nopethedev/rift/main/deploy/install.sh | RIFT_DOMAIN=rift.example.com sh
+```
+
+The installer needs Docker + the compose plugin. It creates `./rift/` with `docker-compose.yml`, a `.env` (random worker token), a `media/` folder, then pulls and starts everything. Open `http://<server-ip>:3000` and finish the setup wizard. Re-running it never overwrites your `.env`.
+
+- **Updating**: `./update.sh` (pull + restart), e.g. nightly with cron, or `docker compose --profile auto-update up -d` to let a small updater container (Watchtower fork) check every 5 minutes. Pin a version with `RIFT_IMAGE=ghcr.io/nopethedev/rift:1.0.0` in `.env` if you prefer controlled upgrades. Migrations run on start; data lives in the `rift-data` volume and your `media/` folder.
+- **One-time repo setup**: after the first workflow run, make the package public so servers can pull without logging in: GitHub → your profile/org → *Packages* → `rift` → *Package settings* → *Change visibility* → Public. Nothing else to configure; the workflow uses the built-in `GITHUB_TOKEN`. (Private package: `docker login ghcr.io` on the server with a token that has `read:packages`.)
+- **Docker Hub instead/as well**: add repository secrets `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` and change `registry`/`IMAGE` in the workflow.
+- The published image uses **SQLite**. For PostgreSQL/MySQL build your own with `docker compose --profile postgres up -d --build` from the repo root (the Prisma client is generated per provider).
+
 ### Other databases
 
 The Prisma provider is derived from `DATABASE_URL` by `scripts/db.mjs`:

@@ -1,0 +1,80 @@
+# Rift on a VPS: pulls the prebuilt image (nothing is built on the server).
+#   docker compose up -d                          # Rift on :3000
+#   docker compose --profile https up -d          # + automatic HTTPS via Caddy (set RIFT_DOMAIN in .env)
+#   docker compose --profile auto-update up -d    # + pull new versions automatically
+# Update manually any time:  docker compose pull && docker compose up -d
+name: rift
+
+x-image: &image ${RIFT_IMAGE:-ghcr.io/nopethedev/rift:latest}
+
+services:
+  web:
+    image: *image
+    restart: unless-stopped
+    # With the https profile, put RIFT_BIND=127.0.0.1 in .env so only Caddy is exposed.
+    ports: ["${RIFT_BIND:-0.0.0.0}:${RIFT_PORT:-3000}:3000"]
+    environment:
+      DATABASE_URL: file:/app/data/rift.db
+      WORKER_URL: http://worker:4100
+      WORKER_TOKEN: ${WORKER_TOKEN:?run install.sh or set WORKER_TOKEN in .env}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      OPENSUBTITLES_API_KEY: ${OPENSUBTITLES_API_KEY:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - rift-data:/app/data
+      - ${MEDIA_PATH:-./media}:/media
+    depends_on: [worker]
+    labels: ["com.centurylinklabs.watchtower.enable=true"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+
+  worker:
+    image: *image
+    restart: unless-stopped
+    command: ["npm", "run", "start:worker"]
+    environment:
+      WORKER_PORT: 4100
+      WORKER_TOKEN: ${WORKER_TOKEN:?run install.sh or set WORKER_TOKEN in .env}
+      MAX_SESSIONS: ${MAX_SESSIONS:-2}
+      TRANSCODE_DIR: /transcode
+    volumes:
+      # Media must be mounted at the same path as in the web container.
+      - ${MEDIA_PATH:-./media}:/media:ro
+      - transcode:/transcode
+    labels: ["com.centurylinklabs.watchtower.enable=true"]
+    # Hardware acceleration (uncomment what applies):
+    # devices: ["/dev/dri:/dev/dri"]          # VAAPI / Intel QSV
+    # deploy: { resources: { reservations: { devices: [{ capabilities: [gpu] }] } } }   # NVIDIA NVENC
+
+  # Automatic HTTPS (Let's Encrypt). Needs a domain pointing at this server and ports 80/443 open.
+  caddy:
+    profiles: [https]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      RIFT_DOMAIN: ${RIFT_DOMAIN:?set RIFT_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [web]
+
+  # Checks every 5 minutes for a newer image and restarts only the containers labelled above.
+  updater:
+    profiles: [auto-update]
+    image: ghcr.io/nicholas-fedor/watchtower:latest
+    restart: unless-stopped
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: "300"
+      WATCHTOWER_CLEANUP: "true"
+
+volumes:
+  rift-data:
+  transcode:
+  caddy-data:
