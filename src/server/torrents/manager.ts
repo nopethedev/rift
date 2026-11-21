@@ -674,11 +674,12 @@ export class TorrentManager {
   private async onMetadata(a: Active) {
     if (this.active.get(a.id) !== a) return;
     const t = a.torrent;
-    this.applySelection(a);
     try {
+      // validate (path traversal etc.) BEFORE selecting anything: with `deselect: true` nothing is requested yet
       const buf = Buffer.from(t.torrentFile!);
       const meta = parseTorrentFile(buf);
       a.files = meta.files;
+      this.applySelection(a);
       const torrentPath = path.join(paths.torrents, `${meta.infoHash}.torrent`);
       if (!existsSync(torrentPath)) await writeFile(torrentPath, buf);
       const row = await db.download.findUnique({ where: { id: a.id } });
@@ -696,16 +697,15 @@ export class TorrentManager {
     const t = a.torrent;
     if (!t.files?.length || t.destroyed) return;
     if (t.pieces.length) t.deselect(0, t.pieces.length - 1);
-    const sel = a.selected ? new Set(a.selected) : null;
-    t.files.forEach((f, i) => {
-      if (!sel || sel.has(i)) f.select();
-    });
+    for (const f of this.selectedFiles(a)) f.select();
   }
 
   private selectedFiles(a: Active): WtFile[] {
     const files = a.torrent.files ?? [];
-    if (!a.selected) return files;
-    return a.selected.map((i) => files[i]).filter(Boolean);
+    // default = every real file (BEP 47 padding files excluded when our own parser knows the list)
+    const idx = a.selected ?? a.files?.map((f) => f.index);
+    if (!idx) return files;
+    return idx.map((i) => files[i]).filter(Boolean);
   }
 
   private liveNumbers(a: Active) {
@@ -720,7 +720,7 @@ export class TorrentManager {
     const downloadSpeed = t.destroyed ? 0 : Math.round(t.downloadSpeed || 0);
     const uploadSpeed = t.destroyed ? 0 : Math.round(t.uploadSpeed || 0);
     const ratio = t.received || size ? (t.uploaded || 0) / (t.received || size) : 0;
-    return { size, downloaded, downloadSpeed, uploadSpeed, peers: t.destroyed ? 0 : t.numPeers || 0, ratio, hasMeta: sel.length > 0 || !!t.files?.length };
+    return { size, downloaded, downloadSpeed, uploadSpeed, peers: t.destroyed ? 0 : t.numPeers || 0, ratio };
   }
 
   private checkFinished(a: Active) {
