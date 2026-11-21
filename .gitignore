@@ -1,0 +1,12 @@
+node_modules
+.next
+data
+/src/generated
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+/media
+/downloads
+/transcode
+/uploads
