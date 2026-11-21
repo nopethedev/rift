@@ -3,7 +3,7 @@ import path from "node:path";
 import { mkdir, access, constants } from "node:fs/promises";
 import { db } from "@/server/db";
 import { route, body, HttpError } from "@/server/api";
-import { createSession } from "@/server/auth";
+import { createSession, isSetupComplete } from "@/server/auth";
 import { hashSecret } from "@/server/security";
 import { updateSettings, defaultSettings } from "@/server/settings";
 import { passwordSchema, usernameSchema } from "@/server/validators";
@@ -22,6 +22,7 @@ const schema = z.object({
 export const POST = route(
   "none",
   async ({ req, ip }) => {
+    if (await isSetupComplete()) throw new HttpError(403, "Setup already completed");
     const d = await body(req, schema);
     for (const dir of [...d.libraryDirs, d.downloadDir]) {
       if (!path.isAbsolute(dir)) throw new HttpError(400, `Path must be absolute: ${dir}`);

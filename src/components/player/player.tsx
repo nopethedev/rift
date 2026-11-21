@@ -104,7 +104,7 @@ export function Player({ fileId }: { fileId: string }) {
         } else {
           const res = await fetch(`/api/media/${fileId}/hls`, {
             method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({ audioIndex: info.audio[audioOrdinal]?.index }),
+            body: JSON.stringify({ audioIndex: info.audio[audioOrdinal]?.index, startPosition: resumeAt || undefined }),
           });
           const body = await res.json();
           if (!res.ok) throw new Error(body.error ?? "Could not start transcoding");
