@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+// Every page is per-user / database-backed: never prerender at build time (the DB does not exist in the image build).
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: { default: "Rift", template: "%s · Rift" },
   description: "Your media. Your server. Your rules.",
