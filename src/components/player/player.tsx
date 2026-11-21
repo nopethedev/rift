@@ -4,10 +4,11 @@ import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  AlertTriangle, ArrowLeft, AudioLines, Check, Gauge, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, SkipForward, Subtitles, Settings, Volume1, Volume2, VolumeX,
+  AlertTriangle, ArrowLeft, AudioLines, Check, Gauge, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Search, SkipForward, Subtitles, Settings, Volume1, Volume2, VolumeX,
 } from "lucide-react";
 import type { PlayerInfo } from "@/lib/types";
 import { decide, pickAudioEncoder, type PlayMode } from "@/lib/compat";
+import { SubtitleFinder } from "../subtitle-finder";
 import { type Engine, MediabunnyEngine, startDirect, startHls } from "./engines";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -56,6 +57,7 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
   const [menu, setMenu] = useState<Menu>(null);
   const [hoverT, setHoverT] = useState<{ x: number; t: number } | null>(null);
   const [nextIn, setNextIn] = useState<number | null>(null);
+  const [finder, setFinder] = useState(false);
 
   const duration = info?.durationSec ?? 0;
 
@@ -228,7 +230,7 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
   const poke = useCallback(() => {
     setControls(true);
     if (hideTimer.current) clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(() => { if (!videoRef.current?.paused) { setControls(false); setMenu(null); } }, 3200);
+    hideTimer.current = setTimeout(() => { if (!videoRef.current?.paused) { setControls(false); setMenu(null); } }, document.documentElement.classList.contains("tv") ? 7000 : 3200);
   }, []);
   const toggle = () => { const v = videoRef.current; if (!v) return; v.paused ? v.play().catch(() => {}) : v.pause(); };
   const seekBy = (d: number) => { const v = videoRef.current; if (v) v.currentTime = Math.min(Math.max(0, v.currentTime + d), duration || v.duration || 1e9); poke(); };
@@ -240,25 +242,47 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
   }, []);
 
   useEffect(() => {
+    // Capture phase: runs before the global spatial navigation, which only gets the arrows we leave alone.
     const k = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.tagName === "INPUT" && (t as HTMLInputElement).type !== "range") return;
+      if (document.querySelector('[aria-modal="true"]')) return; // a dialog (subtitle finder) owns the keyboard
       const v = videoRef.current;
       if (!v) return;
+      const inUi = !!t?.closest("[data-player-ui]"); // a control (button / seek bar) has focus: remote / keyboard "menu mode"
+      const onSeek = t?.getAttribute("aria-label") === "Seek";
       switch (e.key) {
-        case " ": case "k": e.preventDefault(); toggle(); break;
-        case "ArrowLeft": case "j": seekBy(-10); break;
-        case "ArrowRight": case "l": seekBy(10); break;
-        case "ArrowUp": e.preventDefault(); v.volume = Math.min(1, v.volume + 0.1); break;
-        case "ArrowDown": e.preventDefault(); v.volume = Math.max(0, v.volume - 0.1); break;
+        case " ": case "k": if (inUi && t?.tagName === "BUTTON") return; e.preventDefault(); toggle(); break;
+        case "Enter": if (inUi) { poke(); return; } e.preventDefault(); toggle(); break; // remote OK = play/pause
+        case "j": seekBy(-10); break;
+        case "l": seekBy(10); break;
+        case "ArrowLeft": if (inUi && !onSeek) { poke(); return; } e.preventDefault(); seekBy(-10); break;
+        case "ArrowRight": if (inUi && !onSeek) { poke(); return; } e.preventDefault(); seekBy(10); break;
+        case "ArrowUp": case "ArrowDown":
+          // Up/Down reveal the controls and move focus into them (TV remote); once inside, the spatial navigation takes over.
+          // Volume: M, the volume slider, or the TV itself.
+          poke();
+          if (inUi && onSeek && e.key === "ArrowDown") {
+            // The seek bar spans the full width, so geometry can't pick a button: go to Play/Pause first.
+            e.preventDefault();
+            wrapRef.current?.querySelector<HTMLElement>('[data-player-ui] button[aria-label="Play"], [data-player-ui] button[aria-label="Pause"]')?.focus();
+            return;
+          }
+          if (inUi) return;
+          e.preventDefault();
+          setTimeout(() => wrapRef.current?.querySelector<HTMLElement>('[data-player-ui] input[aria-label="Seek"]')?.focus(), 60);
+          return;
         case "m": v.muted = !v.muted; break;
         case "f": toggleFull(); break;
         case "c": setSubIndex((s) => (s >= 0 ? -1 : info?.subtitles.length ? 0 : -1)); break;
-        default: return;
+        case "BrowserBack": case "GoBack": case "XF86Back": e.preventDefault(); back(); return;
+        default: if (e.keyCode === 10009 || e.keyCode === 461) { e.preventDefault(); back(); } return;
       }
       poke();
     };
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    window.addEventListener("keydown", k, true);
+    return () => window.removeEventListener("keydown", k, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info, duration]);
 
@@ -300,7 +324,7 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
       <AnimatePresence>
         {showUi && info && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="pointer-events-none absolute inset-0">
-            <div className="pointer-events-auto absolute inset-x-0 top-0 flex items-center gap-4 bg-gradient-to-b from-black/85 to-transparent px-5 pb-10 pt-5" onClick={(e) => e.stopPropagation()}>
+            <div data-player-ui data-fixed className="pointer-events-auto absolute inset-x-0 top-0 flex items-center gap-4 bg-gradient-to-b from-black/85 to-transparent px-5 pb-10 pt-5" onClick={(e) => e.stopPropagation()}>
               <button onClick={back} aria-label="Back" className="rounded-full p-2 transition hover:bg-white/15"><ArrowLeft className="size-7" /></button>
               <div className="min-w-0">
                 <p className="truncate text-lg font-semibold">{info.title}</p>
@@ -321,17 +345,17 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
               </button>
             )}
 
-            <div className="pointer-events-auto absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-5 pb-4 pt-16" onClick={(e) => e.stopPropagation()}>
+            <div data-player-ui data-fixed className="pointer-events-auto absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-5 pb-4 pt-16" onClick={(e) => e.stopPropagation()}>
               <div
                 className="group relative mb-2 h-5 cursor-pointer"
                 onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHoverT({ x: e.clientX - r.left, t: ((e.clientX - r.left) / r.width) * duration }); }}
                 onMouseLeave={() => setHoverT(null)}
               >
-                <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/25 transition-all group-hover:h-1.5">
+                <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/25 transition-all group-hover:h-1.5 group-focus-within:h-2">
                   <div className="absolute inset-y-0 left-0 bg-white/35" style={{ width: `${bufPct}%` }} />
                   <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-accent to-accent-dark" style={{ width: `${pct}%` }} />
                 </div>
-                <div className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 scale-0 rounded-full bg-white shadow transition group-hover:scale-100" style={{ left: `${pct}%` }} />
+                <div className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 scale-0 rounded-full bg-white shadow transition group-hover:scale-100 group-focus-within:scale-125" style={{ left: `${pct}%` }} />
                 <input
                   type="range" min={0} max={duration || 1} step={0.1} value={time} aria-label="Seek"
                   onChange={(e) => { const v = videoRef.current; if (v) { v.currentTime = Number(e.target.value); setTime(Number(e.target.value)); } }}
@@ -358,6 +382,9 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
                     <MenuItem checked={subIndex < 0} onClick={() => { setSubIndex(-1); setMenu(null); }}>Off</MenuItem>
                     {info.subtitles.map((s, i) => <MenuItem key={s.id} checked={subIndex === i} onClick={() => { setSubIndex(i); setMenu(null); }}>{s.label}</MenuItem>)}
                     {!info.subtitles.length && <p className="px-4 py-2 text-xs text-white/50">No subtitles available</p>}
+                    {info.canFindSubtitles && !torrent && (
+                      <button onClick={() => { videoRef.current?.pause(); setMenu(null); setFinder(true); }} className="flex w-full items-center gap-2 whitespace-nowrap border-t border-white/10 px-4 py-2 text-left text-violet-300 hover:bg-white/10"><Search className="size-4" /> Find online…</button>
+                    )}
                   </MenuBtn>
                   <MenuBtn icon={<AudioLines className="size-6" />} label="Audio" open={menu === "audio"} onToggle={() => setMenu(menu === "audio" ? null : "audio")}>
                     {info.audio.map((a, i) => (
@@ -383,6 +410,12 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
           </motion.div>
         )}
       </AnimatePresence>
+      {info?.canFindSubtitles && (
+        <SubtitleFinder
+          fileId={fileId} title={info.title} open={finder} onClose={() => setFinder(false)}
+          onAdded={(sub) => { const n = info.subtitles.length; setInfo((i) => (i ? { ...i, subtitles: [...i.subtitles, { id: sub.id, label: sub.label, language: sub.language ?? undefined, isDefault: false }] } : i)); setSubIndex(n); }}
+        />
+      )}
     </div>
   );
 }

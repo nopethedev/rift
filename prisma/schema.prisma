@@ -44,6 +44,8 @@ model Profile {
   avatar    String          @default("violet")
   pinHash   String?
   isKids    Boolean         @default(false)
+  // JSON string[] of taste-genre keys picked when the profile was created (see src/lib/taste.ts)
+  favoriteGenres String?
   createdAt DateTime        @default(now())
   user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   progress  WatchProgress[]

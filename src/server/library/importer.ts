@@ -252,7 +252,7 @@ const langLabel = (l?: string) => (l ? LANG_LABELS[l.toLowerCase()] ?? l.toUpper
 export async function registerSubtitleFile(
   mediaFileId: string,
   srcPath: string,
-  opts: { language?: string; label?: string; source?: "external" | "embedded" | "upload"; isDefault?: boolean } = {},
+  opts: { language?: string; label?: string; source?: "external" | "embedded" | "upload" | "opensubtitles"; isDefault?: boolean } = {},
 ): Promise<Subtitle> {
   const fmt = subtitleFormatOf(srcPath);
   if (!fmt) throw new ImportError(`Unsupported subtitle format: ${path.extname(srcPath) || "(none)"}`, 415);

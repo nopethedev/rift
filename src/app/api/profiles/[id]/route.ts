@@ -3,7 +3,7 @@ import { db } from "@/server/db";
 import { route, body, HttpError } from "@/server/api";
 import { selectProfile } from "@/server/auth";
 import { hashSecret, verifySecret } from "@/server/security";
-import { avatarSchema, pinSchema } from "@/server/validators";
+import { avatarSchema, favoriteGenresSchema, pinSchema } from "@/server/validators";
 import { rateLimit, resetRateLimit } from "@/server/ratelimit";
 
 type P = { id: string };
@@ -22,11 +22,12 @@ export const PATCH = route<P>("user", async ({ req, auth, params }) => {
       name: z.string().trim().min(1).max(24).optional(),
       avatar: avatarSchema.optional(),
       isKids: z.boolean().optional(),
+      favoriteGenres: favoriteGenresSchema.optional(),
       pin: pinSchema.nullish(), // null = remove PIN, undefined = keep
       currentPin: z.string().max(8).optional(),
     }),
   );
-  if (p.pinHash && (d.pin !== undefined || d.name || d.avatar || d.isKids !== undefined)) {
+  if (p.pinHash && (d.pin !== undefined || d.name || d.avatar || d.isKids !== undefined || d.favoriteGenres !== undefined)) {
     // Editing a PIN-protected profile requires its PIN
     if (!d.currentPin || !(await verifySecret(d.currentPin, p.pinHash))) throw new HttpError(403, "Current PIN required");
   }
@@ -34,6 +35,7 @@ export const PATCH = route<P>("user", async ({ req, auth, params }) => {
     where: { id: p.id },
     data: {
       name: d.name, avatar: d.avatar, isKids: d.isKids,
+      favoriteGenres: d.favoriteGenres === undefined ? undefined : JSON.stringify(d.favoriteGenres),
       pinHash: d.pin === undefined ? undefined : d.pin === null ? null : await hashSecret(d.pin),
     },
   });

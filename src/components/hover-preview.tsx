@@ -65,6 +65,12 @@ export function HoverPreview({ item, rect, sheet, onClose }: { item: CardItem; r
       animate={sheet ? { y: 0, opacity: 1 } : { opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
       style={sheet ? { width: w } : { position: "fixed", left, top, width: w, transformOrigin: "center" }}
+      data-fixed
+      data-preview={sheet ? undefined : ""}
+      data-ox={Math.round(rect.left + rect.width / 2)}
+      data-oy={Math.round(rect.top + rect.height / 2)}
+      onFocus={sheet ? undefined : keepPreview}
+      onBlur={sheet ? undefined : (e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) closePreview(160); }}
       onPointerEnter={sheet ? undefined : keepPreview}
       onPointerLeave={sheet ? undefined : () => closePreview(120)}
       className="z-[60] overflow-hidden rounded-xl border border-white/10 bg-surface shadow-[0_24px_70px_-10px_rgba(0,0,0,0.9)]"

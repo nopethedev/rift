@@ -2,15 +2,15 @@
 import { useRef, useState } from "react";
 import { ChevronDown, FileDown, Link2, Pause, Play, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { usePoll } from "@/lib/use-poll";
-import { fmtBytes } from "@/lib/types";
-import { Badge, Button, Card, Input, ProgressBar, Skeleton, api } from "@/components/ui";
+import { fmtBytes, tmdbImg } from "@/lib/types";
+import { Badge, Button, Card, Input, Skeleton, api } from "@/components/ui";
 import { ErrorNote, Modal, PageHeader } from "../parts";
 import { FileSelector, type Preview, defaultSelection, fmtEta, fmtSpeed } from "../torrent-parts";
 
 interface D {
   id: string; infoHash: string; name: string; status: string; progress: number; size: number; downloaded: number; downloadSpeed: number; uploadSpeed: number;
   peers: number; ratio: number; eta: number | null; error?: string | null; savePath: string; mediaType?: string | null; tmdbId?: number | null;
-  files: { index: number; path: string; size: number; selected: boolean; progress: number }[];
+  files: { index: number; path: string; size: number; selected: boolean; progress: number }[]; art?: string | null;
 }
 
 const TONE: Record<string, "green" | "accent" | "amber" | "red" | "default"> = { downloading: "accent", completed: "green", imported: "green", seeding: "green", paused: "amber", error: "red", metadata: "amber", queued: "default", importing: "accent" };
@@ -42,12 +42,28 @@ function DownloadCard({ d, act }: { d: D; act: (fn: () => Promise<unknown>) => P
   const [sel, setSel] = useState<Set<number> | null>(null);
   const active = ["downloading", "metadata", "queued"].includes(d.status);
   const patch = (body: object) => act(() => api(`/api/admin/downloads/${d.id}`, { method: "PATCH", body }));
+  const pct = Math.max(0, Math.min(1, d.progress));
+  const art = tmdbImg(d.art, "w780");
   return (
-    <Card className="space-y-3">
+    <Card className="relative space-y-3 overflow-hidden !p-0">
+      {/* Banner as the progress indicator: the left part (= % done) is in colour, the rest is greyed out. */}
+      {art ? (
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <img src={art} alt="" className="absolute inset-0 size-full object-cover object-center grayscale brightness-[.4]" />
+          <img src={art} alt="" style={{ clipPath: `inset(0 ${(1 - pct) * 100}% 0 0)` }} className="absolute inset-0 size-full object-cover object-center brightness-100 saturate-[1.15] transition-[clip-path] duration-700 ease-out" />
+          {pct > 0 && pct < 1 && <span style={{ left: `${pct * 100}%` }} className="absolute inset-y-0 w-0.5 bg-accent shadow-[0_0_14px_2px_#8b5cf6] transition-[left] duration-700 ease-out" />}
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/75 via-bg/10 to-bg/45" />
+        </div>
+      ) : (
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-surface">
+          <div style={{ width: `${pct * 100}%` }} className="h-full bg-gradient-to-r from-accent/35 to-accent/15 transition-[width] duration-700 ease-out" />
+        </div>
+      )}
+      <div className="relative space-y-3 px-5 py-6">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold" title={d.name}>{d.name}</p>
-          <p className="mt-0.5 text-xs text-muted">{fmtBytes(d.downloaded)} / {fmtBytes(d.size)}{d.mediaType ? ` · linked to ${d.mediaType === "tv" ? "TV show" : "movie"}` : ""}</p>
+          <p className="truncate font-semibold drop-shadow" title={d.name}>{d.name}</p>
+          <p className="mt-0.5 text-xs text-white/70">{fmtBytes(d.downloaded)} / {fmtBytes(d.size)}{d.mediaType ? ` · linked to ${d.mediaType === "tv" ? "TV show" : "movie"}` : ""}</p>
         </div>
         <Badge tone={TONE[d.status] ?? "default"}>{d.status}</Badge>
         <div className="flex gap-1">
@@ -67,9 +83,8 @@ function DownloadCard({ d, act }: { d: D; act: (fn: () => Promise<unknown>) => P
           }}><Trash2 className="size-4" /></Button>
         </div>
       </div>
-      <ProgressBar value={d.progress} />
-      <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted">
-        <span>{(d.progress * 100).toFixed(1)}%</span>
+      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-xs text-white/70">
+        <span className="text-lg font-bold tabular-nums text-white drop-shadow">{(d.progress * 100).toFixed(d.progress >= 1 ? 0 : 1)}%</span>
         {active && <><span>↓ {fmtSpeed(d.downloadSpeed)}</span><span>ETA {fmtEta(d.eta)}</span></>}
         <span>↑ {fmtSpeed(d.uploadSpeed)}</span><span>{d.peers} peers</span><span>ratio {d.ratio.toFixed(2)}</span>
       </div>
@@ -85,6 +100,7 @@ function DownloadCard({ d, act }: { d: D; act: (fn: () => Promise<unknown>) => P
           <p className="text-xs text-muted">Saved to {d.savePath}</p>
         </div>
       )}
+      </div>
     </Card>
   );
 }

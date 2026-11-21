@@ -27,11 +27,11 @@ export function Row({ title, items, href }: { title: string; items: CardItem[]; 
       <h2 className="mb-2.5 px-4 text-lg font-semibold tracking-tight sm:px-12 sm:text-xl">{title}</h2>
       <div className="relative">
         {edge.left && (
-          <button aria-label="Scroll left" onClick={() => page(-1)} className="absolute inset-y-0 left-0 z-10 hidden w-12 items-center justify-center bg-gradient-to-r from-bg to-transparent opacity-0 transition group-hover/row:opacity-100 sm:flex">
+          <button tabIndex={-1} aria-label="Scroll left" onClick={() => page(-1)} className="absolute inset-y-0 left-0 z-10 hidden w-12 items-center justify-center bg-gradient-to-r from-bg to-transparent opacity-0 transition group-hover/row:opacity-100 sm:flex">
             <ChevronLeft className="size-8" />
           </button>
         )}
-        <div ref={scroller} onScroll={update} className="no-scrollbar flex snap-x gap-2.5 overflow-x-auto scroll-smooth px-4 py-2 sm:px-12">
+        <div ref={scroller} onScroll={update} className="no-scrollbar flex snap-x gap-2.5 overflow-x-auto scroll-smooth px-4 py-3 sm:px-12">
           {items.map((it) => (
             <div key={it.key} className="w-[118px] shrink-0 snap-start sm:w-[150px] lg:w-[178px]">
               <PosterCard item={it} />
@@ -39,7 +39,7 @@ export function Row({ title, items, href }: { title: string; items: CardItem[]; 
           ))}
         </div>
         {edge.right && (
-          <button aria-label="Scroll right" onClick={() => page(1)} className="absolute inset-y-0 right-0 z-10 hidden w-12 items-center justify-center bg-gradient-to-l from-bg to-transparent opacity-0 transition group-hover/row:opacity-100 sm:flex">
+          <button tabIndex={-1} aria-label="Scroll right" onClick={() => page(1)} className="absolute inset-y-0 right-0 z-10 hidden w-12 items-center justify-center bg-gradient-to-l from-bg to-transparent opacity-0 transition group-hover/row:opacity-100 sm:flex">
             <ChevronRight className="size-8" />
           </button>
         )}

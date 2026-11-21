@@ -60,4 +60,6 @@ export interface PlayerInfo {
   ladder: number[];
   enforceMediabunnyAudio: boolean;
   backPath: string;
+  /** Admin with OpenSubtitles configured: the player offers "Find online…". */
+  canFindSubtitles?: boolean;
 }

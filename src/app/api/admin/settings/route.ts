@@ -27,6 +27,10 @@ const schema = z.object({
   torznabUrl: z.string().trim().max(500).refine((u) => !u || /^https?:\/\//.test(u), "Must be an http(s) URL"),
   torznabApiKey: z.string().trim().max(200),
   sessionDays: z.number().int().min(1).max(365),
+  opensubtitlesApiKey: z.string().trim().max(200),
+  opensubtitlesUsername: z.string().trim().max(100),
+  opensubtitlesPassword: z.string().max(200),
+  subtitleLanguages: z.array(z.string().regex(/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/)).min(1).max(8),
 }).partial();
 
 export const GET = route("admin", async () => ({ settings: publicSettings(await getSettings()), ffmpeg: await probeFfmpeg() }));
@@ -37,6 +41,8 @@ export const PUT = route("admin", async ({ req }) => {
   // Redacted placeholders from the UI mean "unchanged"
   if (d.tmdbApiKey?.startsWith("••••")) delete patch.tmdbApiKey;
   if (d.torznabApiKey?.startsWith("••••")) delete patch.torznabApiKey;
+  if (d.opensubtitlesApiKey?.startsWith("••••")) delete patch.opensubtitlesApiKey;
+  if (d.opensubtitlesPassword?.startsWith("••••")) delete patch.opensubtitlesPassword;
   for (const dir of [...(d.libraryDirs ?? []), d.downloadDir, d.uploadDir].filter(Boolean) as string[]) {
     await mkdir(dir, { recursive: true }).catch((e) => { throw new HttpError(400, `Cannot create ${dir}: ${e.message}`); });
   }

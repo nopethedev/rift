@@ -14,3 +14,10 @@ export const pinSchema = z.string().regex(/^\d{4}$/, "PIN must be 4 digits");
 export const avatarSchema = z.string().regex(/^[a-z0-9]+:[a-z]+$/, "Invalid avatar");
 
 export const mediaTypeSchema = z.enum(["movie", "tv"]);
+
+import { PICK_COUNT, TASTE_KEYS } from "@/lib/taste";
+/** Taste-genre picks for a profile (unique, known keys, at most PICK_COUNT). */
+export const favoriteGenresSchema = z
+  .array(z.string().refine((k) => TASTE_KEYS.includes(k), "Unknown genre"))
+  .max(PICK_COUNT)
+  .transform((a) => [...new Set(a)]);

@@ -31,6 +31,12 @@ export interface Settings {
   torznabUrl: string;
   torznabApiKey: string;
   sessionDays: number;
+  /** OpenSubtitles.com (REST API v1): API key from the account's "API consumers" page, plus the account login for downloads. */
+  opensubtitlesApiKey: string;
+  opensubtitlesUsername: string;
+  opensubtitlesPassword: string;
+  /** ISO 639-1 codes searched / auto-fetched, in order of preference. */
+  subtitleLanguages: string[];
 }
 
 export const defaultSettings = (): Settings => ({
@@ -54,6 +60,10 @@ export const defaultSettings = (): Settings => ({
   torznabUrl: "",
   torznabApiKey: "",
   sessionDays: 30,
+  opensubtitlesApiKey: env.opensubtitlesKey,
+  opensubtitlesUsername: "",
+  opensubtitlesPassword: "",
+  subtitleLanguages: ["en"],
 });
 
 let cache: { at: number; value: Settings } | null = null;
@@ -66,6 +76,7 @@ export async function getSettings(): Promise<Settings> {
     try { value[r.key] = JSON.parse(r.value); } catch { /* ignore corrupt row */ }
   }
   if (!value.tmdbApiKey) value.tmdbApiKey = env.tmdbKey;
+  if (!value.opensubtitlesApiKey) value.opensubtitlesApiKey = env.opensubtitlesKey;
   cache = { at: Date.now(), value: value as unknown as Settings };
   return cache.value;
 }
@@ -84,5 +95,5 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
 
 /** Redacted version safe to send to the browser. */
 export function publicSettings(s: Settings) {
-  return { ...s, tmdbApiKey: s.tmdbApiKey ? "••••" + s.tmdbApiKey.slice(-4) : "", torznabApiKey: s.torznabApiKey ? "••••" : "" };
+  return { ...s, tmdbApiKey: s.tmdbApiKey ? "••••" + s.tmdbApiKey.slice(-4) : "", torznabApiKey: s.torznabApiKey ? "••••" : "", opensubtitlesApiKey: s.opensubtitlesApiKey ? "••••" + s.opensubtitlesApiKey.slice(-4) : "", opensubtitlesPassword: s.opensubtitlesPassword ? "••••" : "" };
 }

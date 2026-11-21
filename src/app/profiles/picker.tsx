@@ -1,13 +1,14 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { Lock, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Lock, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Avatar, Logo } from "@/components/brand";
 import { Button, Input, api } from "@/components/ui";
-import { AVATAR_COLORS, AVATAR_ICONS } from "@/lib/types";
+import { AVATAR_COLORS, AVATAR_ICONS, tmdbImg } from "@/lib/types";
+import { PICK_COUNT, TASTE_GENRES } from "@/lib/taste";
 
-interface P { id: string; name: string; avatar: string; isKids: boolean; hasPin: boolean }
+interface P { id: string; name: string; avatar: string; isKids: boolean; hasPin: boolean; favoriteGenres: string[] }
 
 export function ProfilePicker({ profiles, max, startManaging }: { profiles: P[]; max: number; startManaging: boolean }) {
   const router = useRouter();
@@ -79,10 +80,10 @@ export function ProfilePicker({ profiles, max, startManaging }: { profiles: P[];
   );
 }
 
-function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function Overlay({ children, onClose, wide }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
-      <motion.div initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }} className="relative w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <motion.div role="dialog" aria-modal="true" initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }} className={`relative max-h-[92vh] w-full overflow-y-auto rounded-2xl border border-line bg-surface p-6 shadow-2xl ${wide ? "max-w-2xl" : "max-w-md"}`} onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} aria-label="Close" className="absolute right-4 top-4 text-muted hover:text-white"><X className="size-5" /></button>
         {children}
       </motion.div>
@@ -117,12 +118,17 @@ function EditModal({ profile, canDelete, onClose, onDone }: { profile: P | null;
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [icon, color] = avatar.split(":");
+  const [step, setStep] = useState<"details" | "genres">("details");
+  const [genres, setGenres] = useState<string[]>(profile?.favoriteGenres ?? []);
+  const isNew = !profile;
+  const genresChanged = JSON.stringify(genres) !== JSON.stringify(profile?.favoriteGenres ?? []);
 
-  async function save() {
+  async function save(withGenres = genres) {
     setBusy(true);
     setErr("");
     try {
       const body: Record<string, unknown> = { name, avatar, isKids };
+      if (isNew ? withGenres.length > 0 : genresChanged) body.favoriteGenres = withGenres;
       if (pinMode === "set") body.pin = pin;
       if (pinMode === "remove") body.pin = null;
       if (profile?.hasPin) body.currentPin = currentPin;
@@ -147,6 +153,20 @@ function EditModal({ profile, canDelete, onClose, onDone }: { profile: P | null;
     }
   }
 
+  if (step === "genres") {
+    return (
+      <Overlay onClose={onClose} wide>
+        <GenreStep
+          selected={genres} onChange={setGenres} name={name.trim() || "this profile"} err={err} busy={busy}
+          onBack={() => setStep("details")}
+          onSkip={isNew ? () => { setGenres([]); save([]); } : undefined}
+          onDone={isNew ? () => save() : () => setStep("details")}
+          doneLabel={isNew ? "Create profile" : "Done"}
+        />
+      </Overlay>
+    );
+  }
+
   return (
     <Overlay onClose={onClose}>
       <h2 className="mb-5 text-xl font-bold">{profile ? "Edit profile" : "New profile"}</h2>
@@ -169,6 +189,15 @@ function EditModal({ profile, canDelete, onClose, onDone }: { profile: P | null;
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isKids} onChange={(e) => setIsKids(e.target.checked)} className="accent-violet-500" /> Kids profile (family-friendly content only)</label>
+        {!isKids && !isNew && (
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-white/5 px-3 py-2.5 text-sm">
+            <span className="min-w-0 truncate text-white/80">
+              <span className="text-muted">Favourite genres: </span>
+              {genres.length ? genres.map((k) => TASTE_GENRES.find((g) => g.key === k)?.label).filter(Boolean).join(" · ") : "not chosen"}
+            </span>
+            <button type="button" onClick={() => setStep("genres")} className="shrink-0 text-violet-300 hover:underline">{genres.length ? "Change" : "Choose"}</button>
+          </div>
+        )}
         {profile?.hasPin && <Input label="Current PIN" inputMode="numeric" maxLength={4} value={currentPin} onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ""))} />}
         <div className="flex gap-2 text-sm">
           {(profile?.hasPin ? (["keep", "set", "remove"] as const) : (["keep", "set"] as const)).map((m) => (
@@ -183,10 +212,68 @@ function EditModal({ profile, canDelete, onClose, onDone }: { profile: P | null;
           {profile && canDelete ? <Button variant="ghost" onClick={remove} className="text-red-300"><Trash2 className="size-4" /> Delete</Button> : <span />}
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button onClick={save} loading={busy} disabled={!name.trim() || (pinMode === "set" && pin.length !== 4)}>Save</Button>
+            {isNew && !isKids
+              ? <Button onClick={() => setStep("genres")} disabled={!name.trim() || (pinMode === "set" && pin.length !== 4)}>Next</Button>
+              : <Button onClick={() => save()} loading={busy} disabled={!name.trim() || (pinMode === "set" && pin.length !== 4)}>{isNew ? "Create profile" : "Save"}</Button>}
           </div>
         </div>
       </div>
     </Overlay>
+  );
+}
+
+/** "What do you like?": pick PICK_COUNT genres; they seed the home-page recommendations until there is watch history. */
+function GenreStep({ selected, onChange, name, err, busy, onBack, onSkip, onDone, doneLabel }: {
+  selected: string[]; onChange: (g: string[]) => void; name: string; err: string; busy: boolean;
+  onBack: () => void; onSkip?: () => void; onDone: () => void; doneLabel: string;
+}) {
+  const [posters, setPosters] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    api<{ genres: { key: string; posters: string[] }[] }>("/api/taste/genres")
+      .then((r) => setPosters(Object.fromEntries(r.genres.map((g) => [g.key, g.posters]))))
+      .catch(() => {});
+  }, []);
+  const full = selected.length >= PICK_COUNT;
+  const toggle = (k: string) => onChange(selected.includes(k) ? selected.filter((x) => x !== k) : full ? selected : [...selected, k]);
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-bold">What does {name} like to watch?</h2>
+        <p className="mt-1 text-sm text-muted">Pick {PICK_COUNT} genres. We start with these and learn from what gets watched and saved.</p>
+      </div>
+      <div role="group" aria-label="Genres" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+        {TASTE_GENRES.map((g) => {
+          const idx = selected.indexOf(g.key);
+          const on = idx >= 0;
+          const imgs = (posters[g.key] ?? []).slice(0, 3);
+          return (
+            <motion.button
+              key={g.key} type="button" aria-pressed={on} disabled={!on && full} onClick={() => toggle(g.key)}
+              whileTap={{ scale: 0.97 }}
+              style={{ backgroundImage: `linear-gradient(135deg, ${g.from}, ${g.to})` }}
+              className={`relative flex h-24 flex-col justify-end overflow-hidden rounded-xl p-3 text-left transition ${on ? "ring-[3px] ring-white" : "ring-1 ring-white/10"} ${!on && full ? "opacity-40" : "hover:brightness-110"}`}
+            >
+              {imgs.length > 0 && (
+                <span aria-hidden className="absolute -right-2 -top-1 flex -space-x-5 opacity-90">
+                  {imgs.map((p, i) => <img key={p} src={tmdbImg(p, "w185")!} alt="" loading="lazy" draggable={false} style={{ transform: `rotate(${(i - 1) * 7}deg)` }} className="h-20 w-14 rounded-md object-cover shadow-lg ring-1 ring-black/40" />)}
+                </span>
+              )}
+              <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+              <span className="relative text-sm font-bold leading-tight drop-shadow">{g.label}</span>
+              {on && <span className="absolute left-2 top-2 flex size-6 items-center justify-center rounded-full bg-white text-xs font-bold text-black"><Check className="size-3.5" /></span>}
+            </motion.button>
+          );
+        })}
+      </div>
+      {err && <p className="text-sm text-red-300">{err}</p>}
+      <div className="sticky bottom-0 -mx-6 -mb-6 flex items-center justify-between gap-2 border-t border-line bg-surface px-6 py-4">
+        <Button variant="ghost" onClick={onBack}><ArrowLeft className="size-4" /> Back</Button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted">{selected.length}/{PICK_COUNT}</span>
+          {onSkip && <Button variant="secondary" onClick={onSkip} disabled={busy}>Skip</Button>}
+          <Button onClick={onDone} loading={busy} disabled={selected.length !== PICK_COUNT}>{doneLabel}</Button>
+        </div>
+      </div>
+    </div>
   );
 }

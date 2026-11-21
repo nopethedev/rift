@@ -10,6 +10,7 @@ type S = {
   storageLimitGB: number; maxActiveDownloads: number; downloadLimitKBps: number; uploadLimitKBps: number; autoImportDownloads: boolean;
   hwaccel: string; transcodeLadder: number[]; maxTranscodeJobs: number; enforceMediabunnyAudio: boolean;
   torrentSearchProviders: string[]; torznabUrl: string; torznabApiKey: string; sessionDays: number;
+  opensubtitlesApiKey: string; opensubtitlesUsername: string; opensubtitlesPassword: string; subtitleLanguages: string[];
 };
 interface Resp { settings: S; ffmpeg: { ffmpeg: string | null; ffprobe: string | null; worker: { hwaccels: string[] } | null } }
 
@@ -20,9 +21,26 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [ladderText, setLadderText] = useState("");
-  useEffect(() => { if (data && !s) { setS(data.settings); setLadderText(data.settings.transcodeLadder.join(", ")); } }, [data, s]);
+  const [langText, setLangText] = useState("");
+  const [osTest, setOsTest] = useState<{ ok: boolean; text: string } | null>(null);
+  const [osBusy, setOsBusy] = useState(false);
+  useEffect(() => { if (data && !s) { setS(data.settings); setLadderText(data.settings.transcodeLadder.join(", ")); setLangText(data.settings.subtitleLanguages.join(", ")); } }, [data, s]);
 
   const set = <K extends keyof S>(k: K, v: S[K]) => setS((cur) => (cur ? { ...cur, [k]: v } : cur));
+
+  const langList = () => { const l = langText.split(/[ ,]+/).map((x) => x.trim().toLowerCase()).filter((x) => /^[a-z]{2,3}(-[a-z]{2,4})?$/.test(x)); return l.length ? l : ["en"]; };
+
+  async function testOs() {
+    if (!s) return;
+    setOsBusy(true); setOsTest(null);
+    try {
+      // Save the subtitle fields first so the test uses what is on screen.
+      await api("/api/admin/settings", { method: "PUT", body: { opensubtitlesApiKey: s.opensubtitlesApiKey, opensubtitlesUsername: s.opensubtitlesUsername, opensubtitlesPassword: s.opensubtitlesPassword, subtitleLanguages: langList() } });
+      const r = await api<{ result: { loggedIn: boolean; remaining?: number; level?: string } }>("/api/admin/subtitles/test", { method: "POST" });
+      setOsTest({ ok: true, text: r.result.loggedIn ? `Connected${r.result.level ? ` (${r.result.level})` : ""}${r.result.remaining !== undefined ? ` · ${r.result.remaining} downloads left today` : ""}.` : "API key accepted. Add your username and password to download subtitles." });
+    } catch (e) { setOsTest({ ok: false, text: (e as Error).message }); }
+    setOsBusy(false);
+  }
 
   async function save() {
     if (!s) return;
@@ -30,7 +48,7 @@ export default function SettingsPage() {
     setMsg(null);
     try {
       const ladder = ladderText.split(/[ ,]+/).map(Number).filter((n) => n >= 144);
-      const r = await api<{ settings: S }>("/api/admin/settings", { method: "PUT", body: { ...s, transcodeLadder: ladder.length ? ladder : [1080, 720, 480] } });
+      const r = await api<{ settings: S }>("/api/admin/settings", { method: "PUT", body: { ...s, transcodeLadder: ladder.length ? ladder : [1080, 720, 480], subtitleLanguages: langList() } });
       setS(r.settings);
       setLadderText(r.settings.transcodeLadder.join(", "));
       setMsg({ ok: true, text: "Settings saved." });
@@ -119,6 +137,22 @@ export default function SettingsPage() {
           <Input label="Torznab URL (Jackett / Prowlarr)" value={s.torznabUrl} onChange={(e) => set("torznabUrl", e.target.value)} placeholder="http://prowlarr:9696/1/api" />
           <Input label="Torznab API key" value={s.torznabApiKey} onChange={(e) => set("torznabApiKey", e.target.value)} />
           <p className="text-xs text-muted">Only download content you own or are licensed to use. You are responsible for what you add.</p>
+        </Card>
+
+        <Card className="space-y-4">
+          <h2 className="font-semibold">Subtitles · OpenSubtitles.com</h2>
+          <p className="text-xs text-muted">Uses the current <span className="text-white/80">opensubtitles.com</span> REST API (not the old opensubtitles.org). Create a free account, then an API consumer at <span className="text-violet-300">opensubtitles.com → Profile → API consumers</span> to get a key.</p>
+          <Input label="API key" value={s.opensubtitlesApiKey} onChange={(e) => set("opensubtitlesApiKey", e.target.value)} hint="Stored on the server; shown masked." />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Username" autoComplete="off" value={s.opensubtitlesUsername} onChange={(e) => set("opensubtitlesUsername", e.target.value)} />
+            <Input label="Password" type="password" autoComplete="new-password" value={s.opensubtitlesPassword} onChange={(e) => set("opensubtitlesPassword", e.target.value)} />
+          </div>
+          <Input label="Preferred languages" value={langText} onChange={(e) => setLangText(e.target.value)} hint="ISO codes in order, e.g. en, es, pt-br. Used by “Auto-fetch missing” and as the default search languages." />
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" size="sm" onClick={testOs} loading={osBusy} disabled={!s.opensubtitlesApiKey}>Save &amp; test connection</Button>
+            {osTest && <span className={`text-sm ${osTest.ok ? "text-emerald-300" : "text-red-300"}`}>{osTest.text}</span>}
+          </div>
+          <p className="text-xs text-muted">Downloads need the account login; free accounts have a small daily quota. Admins can add subtitles from Media → title → file, or from the player&apos;s subtitle menu.</p>
         </Card>
 
         <Card className="space-y-4">

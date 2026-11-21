@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, FileVideo, FolderSync, Link as LinkIcon, Plus, Search, Subtitles, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Captions, FileVideo, FolderSync, Link as LinkIcon, Plus, Search, Subtitles, Trash2, Upload } from "lucide-react";
 import { usePoll } from "@/lib/use-poll";
 import { fmtBytes, fmtDuration, tmdbImg } from "@/lib/types";
 import { Badge, Button, Card, Input, Select, Skeleton, api } from "@/components/ui";
+import { SubtitleFinder } from "@/components/subtitle-finder";
 import { ErrorNote, Modal, PageHeader } from "../parts";
 
 interface T { id: string; type: string; tmdbId: number | null; title: string; year: number | null; posterPath: string | null; fileCount: number; episodeCount: number; sizeBytes: number; missing: number }
@@ -89,7 +90,21 @@ interface Detail { id: string; type: string; tmdbId: number | null; title: strin
 function ManageTitle({ id, onClose, onChanged }: { id: string | null; onClose: () => void; onChanged: () => void }) {
   const { data, reload } = usePoll<Detail>(id ? `/api/admin/media/title/${id}` : null);
   const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
+  const [finder, setFinder] = useState<string | null>(null);
+  const [auto, setAuto] = useState(false);
   const act = async (fn: () => Promise<unknown>) => { setErr(""); try { await fn(); await reload(); onChanged(); } catch (e) { setErr((e as Error).message); } };
+  async function autoFetch() {
+    if (!data) return;
+    setAuto(true); setErr(""); setNote("");
+    try {
+      const { report } = await api<{ report: { added: number; skipped: number; notFound: number; errors: string[] } }>("/api/admin/subtitles/auto", { method: "POST", body: { titleId: data.id } });
+      setNote(`Added ${report.added} subtitle${report.added === 1 ? "" : "s"}${report.notFound ? `, ${report.notFound} not found` : ""}${report.skipped ? `, ${report.skipped} already present` : ""}.`);
+      if (report.errors.length) setErr(report.errors[0]);
+      await reload(); onChanged();
+    } catch (e) { setErr((e as Error).message); }
+    setAuto(false);
+  }
 
   const FileCard = ({ f, label }: { f: FileRow; label?: string }) => (
     <div className="rounded-lg border border-line bg-bg/50 p-3 text-sm">
@@ -102,6 +117,7 @@ function ManageTitle({ id, onClose, onChanged }: { id: string | null; onClose: (
             {f.status !== "ready" && <Badge tone="red">{f.status}</Badge>}<Badge>{f.source}</Badge>
           </p>
         </div>
+        <button className="rounded-md p-1.5 text-muted hover:bg-white/10 hover:text-white" title="Find subtitles on OpenSubtitles.com" onClick={() => setFinder(f.id)}><Captions className="size-4" /></button>
         <label className="cursor-pointer rounded-md p-1.5 text-muted hover:bg-white/10 hover:text-white" title="Upload subtitle (SRT, VTT, ASS)">
           <Subtitles className="size-4" />
           <input type="file" hidden accept=".srt,.vtt,.ass,.ssa" onChange={(e) => {
@@ -134,6 +150,11 @@ function ManageTitle({ id, onClose, onChanged }: { id: string | null; onClose: (
       {!data ? <Skeleton className="h-40" /> : (
         <div className="space-y-3">
           <ErrorNote msg={err} />
+          {note && <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{note}</p>}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted">Subtitles: upload a file, or fetch from OpenSubtitles.com.</p>
+            <Button size="sm" variant="secondary" loading={auto} onClick={autoFetch}><Captions className="size-4" /> Auto-fetch missing</Button>
+          </div>
           {data.files.map((f) => <FileCard key={f.id} f={f} />)}
           {data.episodes.map((e) => e.files.map((f) => <FileCard key={f.id} f={f} label={`S${e.season}E${e.number}${e.name ? ` · ${e.name}` : ""}`} />))}
           <div className="flex items-center justify-between pt-2">
@@ -146,6 +167,7 @@ function ManageTitle({ id, onClose, onChanged }: { id: string | null; onClose: (
           </div>
         </div>
       )}
+      <SubtitleFinder fileId={finder} title={data?.title ?? ""} open={!!finder} onClose={() => setFinder(null)} onAdded={() => { reload(); onChanged(); }} />
     </Modal>
   );
 }

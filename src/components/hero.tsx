@@ -46,9 +46,9 @@ export function Hero({ items }: { items: CardItem[] }) {
             {it.overview && <p className="line-clamp-3 max-w-xl text-sm text-white/85 drop-shadow sm:text-base">{it.overview}</p>}
             <div className="flex flex-wrap items-center gap-3 pt-1">
               {play && (
-                <Link href={play} className="btn-primary inline-flex items-center gap-2 rounded-lg px-6 py-3 font-semibold"><Play className="size-5 fill-white" /> Play</Link>
+                <Link href={play} data-autofocus className="btn-primary inline-flex items-center gap-2 rounded-lg px-6 py-3 font-semibold"><Play className="size-5 fill-white" /> Play</Link>
               )}
-              <Link href={cardHref(it)} className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/15 px-5 py-3 font-semibold backdrop-blur transition hover:bg-white/25"><Info className="size-5" /> More info</Link>
+              <Link href={cardHref(it)} data-autofocus={play ? undefined : true} className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/15 px-5 py-3 font-semibold backdrop-blur transition hover:bg-white/25"><Info className="size-5" /> More info</Link>
               <button onClick={() => toggleList(it)} aria-label={saved ? "Remove from My List" : "Add to My List"} className="flex size-12 items-center justify-center rounded-full border border-white/30 bg-black/30 backdrop-blur transition hover:border-white hover:bg-white/10">
                 {saved ? <Check className="size-5" /> : <Plus className="size-5" />}
               </button>
@@ -57,9 +57,9 @@ export function Hero({ items }: { items: CardItem[] }) {
         </AnimatePresence>
       </div>
       {items.length > 1 && (
-        <div className="absolute bottom-24 right-4 flex gap-1.5 sm:bottom-16 sm:right-12">
+        <div className="absolute right-4 top-[4.5rem] flex gap-1.5 sm:bottom-16 sm:right-12 sm:top-auto">
           {items.map((x, n) => (
-            <button key={x.key} aria-label={`Show ${x.title}`} onClick={() => setI(n)} className={`h-1 rounded-full transition-all ${n === i ? "w-8 bg-accent" : "w-4 bg-white/30 hover:bg-white/60"}`} />
+            <button key={x.key} tabIndex={-1} aria-label={`Show ${x.title}`} onClick={() => setI(n)} className={`h-1 rounded-full transition-all ${n === i ? "w-8 bg-accent" : "w-4 bg-white/30 hover:bg-white/60"}`} />
           ))}
         </div>
       )}

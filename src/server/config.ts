@@ -11,6 +11,8 @@ export const env = {
   workerToken: process.env.WORKER_TOKEN || "dev-worker-token",
   tmdbKey: process.env.TMDB_API_KEY || "",
   tmdbBase: (process.env.TMDB_BASE_URL || "https://api.themoviedb.org/3").replace(/\/$/, ""),
+  opensubtitlesKey: process.env.OPENSUBTITLES_API_KEY || "",
+  opensubtitlesBase: (process.env.OPENSUBTITLES_BASE_URL || "https://api.opensubtitles.com/api/v1").replace(/\/$/, ""),
   secureCookies: process.env.COOKIE_SECURE === "true",
 };
 

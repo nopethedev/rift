@@ -30,7 +30,11 @@ export function PosterCard({ item, className }: { item: CardItem; className?: st
     <Link
       ref={ref}
       href={cardHref(item)}
-      className={clsx("group/card relative block aspect-[2/3] w-full shrink-0 overflow-hidden rounded-lg bg-surface outline-none ring-accent transition-transform focus-visible:ring-2", className)}
+      data-card
+      className={clsx("group/card relative block aspect-[2/3] w-full shrink-0 overflow-hidden rounded-lg bg-surface outline-none transition-transform duration-200 focus-visible:scale-[1.07]", className)}
+      // Keyboard / remote: dwelling on a card for the hover delay opens the same preview a mouse would.
+      onFocus={(e) => { if (!e.currentTarget.matches(":focus-visible")) return; clear(); timer.current = setTimeout(() => open(false), HOVER_DELAY_MS); }}
+      onBlur={() => { clear(); closePreview(160); }}
       onPointerEnter={(e) => {
         if (e.pointerType !== "mouse") return;
         clear();

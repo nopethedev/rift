@@ -6,7 +6,7 @@ import type { ProbeResult } from "@shared/probe";
 import type { PlayerInfo } from "@/lib/types";
 
 /** Everything the player needs to pick a playback mode and show tracks. */
-export const GET = route<{ id: string }>("profile", async ({ params, profile }) => {
+export const GET = route<{ id: string }>("profile", async ({ params, profile, auth }) => {
   const file = await db.mediaFile.findUnique({
     where: { id: params.id },
     include: { title: true, episode: { include: { titleRef: true } }, subtitles: { orderBy: { createdAt: "asc" } } },
@@ -41,6 +41,7 @@ export const GET = route<{ id: string }>("profile", async ({ params, profile }) 
     next,
     ladder: settings.transcodeLadder,
     enforceMediabunnyAudio: settings.enforceMediabunnyAudio,
+    canFindSubtitles: auth.user.role === "ADMIN" && !!settings.opensubtitlesApiKey,
     backPath: show ? `/title/tv/${show.tmdbId}` : file.title?.tmdbId ? `/title/movie/${file.title.tmdbId}` : "/",
   };
   return info;

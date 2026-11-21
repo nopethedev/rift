@@ -3,15 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
-import { LogOut, Search, Settings2, Users, X } from "lucide-react";
+import { Bookmark, Clapperboard, Home, LogOut, Search, Settings2, Tv, Users, X } from "lucide-react";
 import { Avatar, Logo } from "./brand";
 import { api } from "./ui";
+import { isTvMode, setTvMode } from "./spatial-nav";
 
 const LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/browse/tv", label: "TV Shows" },
-  { href: "/browse/movies", label: "Movies" },
-  { href: "/my-list", label: "My List" },
+  { href: "/", label: "Home", icon: Home },
+  { href: "/browse/tv", label: "TV Shows", icon: Tv },
+  { href: "/browse/movies", label: "Movies", icon: Clapperboard },
+  { href: "/my-list", label: "My List", icon: Bookmark },
 ];
 
 export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: string }; isAdmin: boolean }) {
@@ -21,6 +22,7 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
   const [menu, setMenu] = useState(false);
   const [searching, setSearching] = useState(false);
   const [q, setQ] = useState("");
+  const [tv, setTv] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -66,7 +68,7 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
           )}
         </div>
         <div className="relative">
-          <button onClick={() => setMenu((m) => !m)} aria-label="Account menu" aria-expanded={menu} className="flex items-center rounded-md outline-none ring-accent focus-visible:ring-2"><Avatar avatar={profile.avatar} size={34} /></button>
+          <button onClick={() => { setTv(isTvMode()); setMenu((m) => !m); }} aria-label="Account menu" aria-expanded={menu} className="flex items-center rounded-md outline-none ring-accent focus-visible:ring-2"><Avatar avatar={profile.avatar} size={34} /></button>
           {menu && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
@@ -75,6 +77,9 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
                 <Link href="/profiles" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Users className="size-4" /> Switch profile</Link>
                 <Link href="/profiles?manage=1" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Settings2 className="size-4" /> Manage profiles</Link>
                 {isAdmin && <Link href="/admin" className="flex items-center gap-3 px-4 py-2.5 text-violet-300 hover:bg-white/10"><Settings2 className="size-4" /> Admin dashboard</Link>}
+                <button onClick={() => { setTvMode(!tv); setTv(!tv); }} role="switch" aria-checked={tv} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-white/10">
+                  <Tv className="size-4" /> TV mode <span className={clsx("ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold uppercase", tv ? "bg-accent text-white" : "bg-white/10 text-white/50")}>{tv ? "On" : "Off"}</span>
+                </button>
                 <button onClick={signOut} className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-2.5 text-left hover:bg-white/10"><LogOut className="size-4" /> Sign out</button>
               </div>
             </>
@@ -85,14 +90,20 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
   );
 }
 
-/** Bottom tab bar for small screens (the top links are hidden below md). */
+/** Bottom tab bar for small screens (the top links are hidden below md): icon above label. */
 export function MobileTabs() {
   const path = usePathname();
   return (
-    <div className="glass fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-white/10 py-2 text-xs md:hidden">
-      {LINKS.map((l) => (
-        <Link key={l.href} href={l.href} className={clsx("px-3 py-1", (l.href === "/" ? path === "/" : path.startsWith(l.href)) ? "font-semibold text-white" : "text-white/55")}>{l.label}</Link>
-      ))}
-    </div>
+    <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/10 pb-[env(safe-area-inset-bottom)] md:hidden">
+      {LINKS.map((l) => {
+        const on = l.href === "/" ? path === "/" : path.startsWith(l.href);
+        return (
+          <Link key={l.href} href={l.href} aria-current={on ? "page" : undefined} className={clsx("flex flex-col items-center gap-1 px-2 py-2.5 text-[11px] leading-none transition", on ? "font-semibold text-white" : "text-white/55")}>
+            <l.icon className={clsx("size-5 transition", on && "scale-110 text-accent")} strokeWidth={on ? 2.4 : 2} />
+            {l.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

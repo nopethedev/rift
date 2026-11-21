@@ -1,7 +1,10 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { Film, KeyRound } from "lucide-react";
+import { Film, KeyRound, Sparkles } from "lucide-react";
 import { requireProfile } from "@/server/auth";
+import { db } from "@/server/db";
+import { tasteRows } from "@/server/taste";
+import { parseFavoriteGenres } from "@/lib/taste";
 import { tmdbConfigured } from "@/server/tmdb";
 import { continueWatching, myList, recentlyAdded, recommendations, tmdbRow } from "@/server/catalog";
 import { Hero } from "@/components/hero";
@@ -40,6 +43,23 @@ async function RecoRows({ profileId }: { profileId: string }) {
   return <>{rows.map((r) => <Row key={r.title} title={r.title} items={r.items} />)}</>;
 }
 
+/** Rows from the profile's taste: its picked genres, watch history and My List (see src/lib/taste.ts). */
+async function TasteRows({ profileId, name }: { profileId: string; name: string }) {
+  const [rows, row] = await Promise.all([safe(tasteRows(profileId, name), []), db.profile.findUnique({ where: { id: profileId }, select: { favoriteGenres: true } })]);
+  const picked = parseFavoriteGenres(row?.favoriteGenres).length > 0;
+  return (
+    <>
+      {rows.map((r) => <Row key={r.title} title={r.title} items={r.items} />)}
+      {!picked && !rows.length && (
+        <Link href="/profiles?manage=1" className="mx-4 flex items-center gap-3 rounded-xl border border-dashed border-accent/40 bg-accent/5 px-4 py-3 text-sm transition hover:bg-accent/10 sm:mx-12">
+          <Sparkles className="size-5 shrink-0 text-accent" />
+          <span><span className="font-semibold">Personalise Rift.</span> <span className="text-muted">Pick 3 genres you like and your home page starts recommending them.</span></span>
+        </Link>
+      )}
+    </>
+  );
+}
+
 const GENRE_ROWS = [
   { title: "Action Movies", type: "movie", g: 28 },
   { title: "Sci-Fi & Fantasy", type: "movie", g: "878,14" },
@@ -66,6 +86,7 @@ export default async function HomePage() {
         <Suspense fallback={null}><AsyncRow title="Continue Watching" load={cont} /></Suspense>
         <Suspense fallback={null}><AsyncRow title="My List" load={list} /></Suspense>
         <Suspense fallback={sk}><AsyncRow title="Recently Added to Your Library" load={local} /></Suspense>
+        {!profile.isKids && <Suspense fallback={null}><TasteRows profileId={profile.id} name={profile.name} /></Suspense>}
         {configured ? (
           profile.isKids ? (
             <>
