@@ -1,9 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, Check, CheckCircle2, FolderInput, HardDriveUpload, Magnet, Search, Trash2, UploadCloud, XCircle } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, FolderInput, HardDriveUpload, Magnet, Search, Trash2, UploadCloud, XCircle, Zap } from "lucide-react";
 import { fmtBytes, tmdbImg } from "@/lib/types";
 import { Badge, Button, Card, Input, ProgressBar, Select, Skeleton, api } from "@/components/ui";
 import { ErrorNote, PageHeader } from "../../parts";
@@ -32,7 +32,10 @@ export function Wizard() {
   useEffect(() => {
     if (!preTmdb || !preType) return;
     fetch(`/api/tmdb/details?type=${preType}&id=${preTmdb}`).then((r) => r.json()).then((d) => {
-      if (d.title) setTitle({ tmdbId: preTmdb, type: preType, title: d.title, year: d.year, posterPath: d.backdropPath });
+      if (d.title) {
+        setTitle({ tmdbId: preTmdb, type: preType, title: d.title, year: d.year, posterPath: d.backdropPath });
+        if (params.get("source") === "torrent") { setSource("torrent"); setStep(2); }
+      }
     }).catch(() => {});
   }, [preTmdb, preType]);
 
@@ -252,7 +255,18 @@ function buildQuery(t: Hit, season: number | null, episode: number | null) {
   return `${t.title}${t.year ? ` ${t.year}` : ""}`;
 }
 
+async function startStream(router: ReturnType<typeof useRouter>, body: object): Promise<string | null> {
+  try {
+    const r = await api<{ stream: { id: string } }>("/api/admin/torrent-streams", { method: "POST", body });
+    router.push(`/stream/${r.stream.id}`);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
 function TorrentStep({ title, onBack }: { title: Hit; onBack: () => void }) {
+  const router = useRouter();
   const isTv = title.type === "tv";
   const [seasons, setSeasons] = useState<{ number: number; name: string }[]>([]);
   const [season, setSeason] = useState<number | null>(isTv ? 1 : null);
@@ -303,7 +317,10 @@ function TorrentStep({ title, onBack }: { title: Hit; onBack: () => void }) {
                   <td className="whitespace-nowrap">{r.size}</td>
                   <td className={r.seeds > 0 ? "text-emerald-400" : "text-muted"}>{r.seeds}</td><td className="text-muted">{r.peers}</td>
                   <td><Badge>{r.provider}</Badge></td>
-                  <td className="pr-3 text-right"><Button size="sm" onClick={() => setPicked(r)}>Select</Button></td>
+                  <td className="whitespace-nowrap pr-3 text-right">
+                    <Button size="sm" className="mr-1.5" title="Stream now: buffers a few MB, plays while downloading, deletes itself afterwards" onClick={async () => { setErr(""); const m = await startStream(router, { result: r }); if (m) setErr(m); }}><Zap className="size-3.5" /> Stream</Button>
+                    <Button size="sm" variant="secondary" onClick={() => setPicked(r)}>Download</Button>
+                  </td>
                 </tr>
               ))}
               {!results.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-muted">No results. Try a shorter query, another season, or enable more providers in Settings.</td></tr>}
@@ -317,6 +334,7 @@ function TorrentStep({ title, onBack }: { title: Hit; onBack: () => void }) {
 }
 
 function TorrentPick({ title, season, result, onBack }: { title: Hit; season: number | null; result: TorrentResult | null; onBack: () => void }) {
+  const router = useRouter();
   const [magnet, setMagnet] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -381,7 +399,17 @@ function TorrentPick({ title, season, result, onBack }: { title: Hit; season: nu
         <Card className="space-y-4">
           <div><p className="font-semibold">{preview.name}</p><p className="text-xs text-muted">{fmtBytes(preview.totalSize)} · {preview.files.length} files — choose what to download</p></div>
           <FileSelector files={preview.files} selected={sel} onChange={setSel} />
-          <Button onClick={add} loading={busy} disabled={!sel.size} className="w-full">Download &amp; link to {title.title}{title.type === "tv" && season ? ` · S${season}` : ""}</Button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button onClick={add} loading={busy} disabled={!sel.size}>Download &amp; link to {title.title}{title.type === "tv" && season ? ` · S${season}` : ""}</Button>
+            <Button variant="secondary" disabled={!sel.size || busy} onClick={async () => {
+              setErr("");
+              const vids = preview.files.filter((f) => sel.has(f.index) && /\.(mkv|mp4|m4v|mov|avi|webm|ts|m2ts|wmv|flv|mpg|mpeg|ogv)$/i.test(f.path));
+              const fileIndex = vids.length === 1 ? vids[0].index : undefined;
+              if (file) { const f = new FormData(); f.set("file", file); if (fileIndex !== undefined) f.set("fileIndex", String(fileIndex)); const r = await fetch("/api/admin/torrent-streams", { method: "POST", body: f }); const j = await r.json(); if (!r.ok) return setErr(j.error); router.push(`/stream/${j.stream.id}`); return; }
+              const m = await startStream(router, { ...(result ? { result } : { magnet: magnet.trim() }), fileIndex });
+              if (m) setErr(m);
+            }}><Zap className="size-4" /> Stream now (no download)</Button>
+          </div>
         </Card>
       )}
       <ErrorNote msg={err} />

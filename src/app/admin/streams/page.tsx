@@ -1,5 +1,5 @@
 "use client";
-import { Activity, Cpu, Square } from "lucide-react";
+import { Activity, Cpu, Square, Zap } from "lucide-react";
 import { usePoll } from "@/lib/use-poll";
 import { fmtDuration } from "@/lib/types";
 import { Avatar } from "@/components/brand";
@@ -7,10 +7,11 @@ import { Badge, Button, Card, ProgressBar, api } from "@/components/ui";
 import { PageHeader, ago } from "../parts";
 
 interface S { id: string; user: string; profile: string; avatar: string; mode: string; detail: string | null; ip: string | null; startedAt: string; positionSec: number; durationSec: number | null; title: string }
+interface TS { id: string; name: string; fileName: string | null; status: string; progress: number; prebuffer: number; downloadSpeed: number; peers: number; idleSeconds: number; idleLimit: number }
 interface T { sessionId: string; inputPath: string; state: string; startedAt: number; speed?: number; fps?: number; hwaccel: string; segmentsReady: number; segmentsTotal: number; variants: { height: number }[] }
 
 export default function StreamsPage() {
-  const { data, reload } = usePoll<{ streams: S[]; transcodes: T[] }>("/api/admin/streams", 3000);
+  const { data, reload } = usePoll<{ streams: S[]; transcodes: T[]; torrentStreams: TS[] }>("/api/admin/streams", 3000);
   return (
     <>
       <PageHeader title="Active streams" subtitle="Live playback sessions and transcodes on the FFmpeg worker." />
@@ -35,6 +36,22 @@ export default function StreamsPage() {
         {data && !data.streams.length && (
           <Card className="flex flex-col items-center gap-2 py-12 text-center text-muted"><Activity className="size-8" /> Nobody is watching right now.</Card>
         )}
+      </div>
+
+      <h2 className="mb-3 mt-10 flex items-center gap-2 text-lg font-semibold"><Zap className="size-5 text-accent" /> On-demand torrent streams</h2>
+      <div className="space-y-3">
+        {data?.torrentStreams.map((t) => (
+          <Card key={t.id} className="flex flex-wrap items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{t.fileName ?? t.name}</p>
+              <p className="text-xs text-muted">{t.status} · {t.peers} peers · {(t.downloadSpeed / 1048576).toFixed(1)} MB/s · {Math.round(t.progress * 100)}% downloaded · deleted in {Math.max(0, t.idleLimit - t.idleSeconds)}s without heartbeat</p>
+              <ProgressBar className="mt-2 max-w-xs" value={t.status === "buffering" ? t.prebuffer : t.progress} />
+            </div>
+            <Badge tone={t.status === "error" ? "red" : t.status === "ready" ? "green" : "amber"}>{t.status}</Badge>
+            <Button size="sm" variant="secondary" onClick={async () => { await api(`/api/admin/streams?torrent=${encodeURIComponent(t.id)}`, { method: "DELETE" }); reload(); }}><Square className="size-3.5" /> Stop &amp; delete</Button>
+          </Card>
+        ))}
+        {data && !data.torrentStreams.length && <p className="text-sm text-muted">None. Use <span className="text-violet-300">Add media → Search &amp; torrent → Stream</span> to watch a torrent while it downloads.</p>}
       </div>
 
       <h2 className="mb-3 mt-10 flex items-center gap-2 text-lg font-semibold"><Cpu className="size-5 text-accent" /> Worker transcodes</h2>

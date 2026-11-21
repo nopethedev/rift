@@ -1,6 +1,7 @@
 import { db } from "@/server/db";
 import { route } from "@/server/api";
 import { listWorkerSessions, stopWorkerSession } from "@/server/transcode";
+import { getTorrentStreamer } from "@/server/torrents/streamer";
 
 export const GET = route("admin", async () => {
   const since = new Date(Date.now() - 45_000);
@@ -23,6 +24,7 @@ export const GET = route("admin", async () => {
       title: s.mediaFile.episode ? `${s.mediaFile.episode.titleRef.title} · S${s.mediaFile.episode.season}E${s.mediaFile.episode.number}` : s.mediaFile.title?.title ?? "Unknown",
     })),
     transcodes: worker,
+    torrentStreams: getTorrentStreamer().list(),
   };
 });
 
@@ -30,5 +32,7 @@ export const GET = route("admin", async () => {
 export const DELETE = route("admin", async ({ req }) => {
   const id = req.nextUrl.searchParams.get("session");
   if (id) await stopWorkerSession(id);
+  const ts = req.nextUrl.searchParams.get("torrent");
+  if (ts) await getTorrentStreamer().destroy(ts);
   return { ok: true };
 });
