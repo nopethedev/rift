@@ -17,7 +17,9 @@
     "db:migrate:dev": "node scripts/db.mjs migrate-dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:worker": "tsx worker/selftest.ts"
+    "test:worker": "tsx worker/selftest.ts",
+    "test:torrents": "tsx --conditions=react-server scripts/test-torrents.ts",
+    "test:importer": "tsx --conditions=react-server scripts/test-importer.ts"
   },
   "dependencies": {
     "@mediabunny/ac3": "^1.66.2",

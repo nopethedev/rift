@@ -90,7 +90,6 @@ async function main() {
 
   const p1 = await waitFor(async () => {
     const d = await mgr.get(v.id);
-    if (process.env.DEBUG_T) console.log(JSON.stringify({ ...d, files: undefined }));
     return d && d.progress > 0.15 && d.progress < 0.9 ? d : null;
   }, 60_000, "progress");
   check(p1.status === "downloading" && p1.downloadSpeed > 0 && p1.peers >= 1, `downloading: ${(p1.progress * 100).toFixed(0)}% @ ${(p1.downloadSpeed / 1024).toFixed(0)} KB/s, ${p1.peers} peer(s), eta ${p1.eta}s`);
