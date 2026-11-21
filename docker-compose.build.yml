@@ -1,0 +1,14 @@
+# Override: build the image from this checkout instead of pulling the published one.
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# Needed for PostgreSQL/MySQL (the Prisma client is generated per provider) or when you changed the code.
+services:
+  web:
+    pull_policy: build
+    build:
+      context: .
+      args:
+        DATABASE_URL: ${DATABASE_URL:-file:/app/data/rift.db}
+  worker:
+    pull_policy: build
+    build:
+      context: .

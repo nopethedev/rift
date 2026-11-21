@@ -31,7 +31,15 @@ Requirements: Node ≥ 22 and FFmpeg/FFprobe on the `PATH`.
 
 ```bash
 cp .env.example .env          # set WORKER_TOKEN (openssl rand -hex 32), MEDIA_PATH, optionally TMDB_API_KEY
-docker compose up -d --build
+docker compose up -d          # pulls the prebuilt ghcr.io/nopethedev/rift:latest, no build
+```
+
+Update: `docker compose pull && docker compose up -d` (`up` also re-checks for a newer image on every run). Pin a build with `RIFT_IMAGE=ghcr.io/nopethedev/rift:sha-<commit>` in `.env`.
+
+To build from this checkout instead (your own changes, or PostgreSQL/MySQL), add the build override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 - `web` serves the app on `:3000`; `worker` is the dedicated FFmpeg service. The media folder is mounted at `/media` in both containers (same path).
@@ -53,7 +61,7 @@ The installer needs Docker + the compose plugin. It creates `./rift/` with `dock
 - **Updating**: `./update.sh` (pull + restart), e.g. nightly with cron, or `docker compose --profile auto-update up -d` to let a small updater container (Watchtower fork) check every 5 minutes. Pin a version with `RIFT_IMAGE=ghcr.io/nopethedev/rift:1.0.0` in `.env` if you prefer controlled upgrades. Migrations run on start; data lives in the `rift-data` volume and your `media/` folder.
 - **One-time repo setup**: after the first workflow run, make the package public so servers can pull without logging in: GitHub → your profile/org → *Packages* → `rift` → *Package settings* → *Change visibility* → Public. Nothing else to configure; the workflow uses the built-in `GITHUB_TOKEN`. (Private package: `docker login ghcr.io` on the server with a token that has `read:packages`.)
 - **Docker Hub instead/as well**: add repository secrets `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` and change `registry`/`IMAGE` in the workflow.
-- The published image uses **SQLite**. For PostgreSQL/MySQL build your own with `docker compose --profile postgres up -d --build` from the repo root (the Prisma client is generated per provider).
+- The published image uses **SQLite**. For PostgreSQL/MySQL build your own with `docker compose -f docker-compose.yml -f docker-compose.build.yml --profile postgres up -d --build` from the repo root (the Prisma client is generated per provider).
 
 ### Other databases
 
@@ -65,7 +73,7 @@ The Prisma provider is derived from `DATABASE_URL` by `scripts/db.mjs`:
 | `postgresql://…` | PostgreSQL | `prisma db push` on start |
 | `mysql://…` | MySQL / MariaDB | `prisma db push` on start |
 
-Set `DATABASE_URL` **before** `npm run build` / `docker compose build` (the client is generated for that provider). With compose: `docker compose --profile postgres up -d --build` and `DATABASE_URL=postgresql://rift:rift@postgres:5432/rift`.
+Set `DATABASE_URL` **before** `npm run build` / `docker compose build` (the client is generated for that provider). With compose: `docker compose -f docker-compose.yml -f docker-compose.build.yml --profile postgres up -d --build` and `DATABASE_URL=postgresql://rift:rift@postgres:5432/rift`.
 
 ## How playback works
 

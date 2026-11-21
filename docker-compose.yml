@@ -1,12 +1,16 @@
-# Rift: web app + dedicated FFmpeg worker. SQLite by default; see the `postgres` profile for PostgreSQL.
-#   docker compose up -d --build          (SQLite)
-#   docker compose --profile postgres up -d --build   (set DATABASE_URL below / in .env)
+# Rift: web app + dedicated FFmpeg worker. Uses the prebuilt image from GitHub Container Registry (SQLite).
+#   docker compose up -d                  # pulls ghcr.io/nopethedev/rift:latest, no local build
+#   docker compose pull && docker compose up -d   # update (also happens on every `up`, see pull_policy)
+# Build from source instead (own changes, PostgreSQL/MySQL):
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml --profile postgres up -d --build
+# Pin a version with RIFT_IMAGE=ghcr.io/nopethedev/rift:sha-<commit> in .env.
+x-image: &image ${RIFT_IMAGE:-ghcr.io/nopethedev/rift:latest}
+
 services:
   web:
-    build:
-      context: .
-      args:
-        DATABASE_URL: ${DATABASE_URL:-file:/app/data/rift.db}
+    image: *image
+    pull_policy: always
     restart: unless-stopped
     ports: ["${RIFT_PORT:-3000}:3000"]
     environment:
@@ -21,8 +25,8 @@ services:
     depends_on: [worker]
 
   worker:
-    build:
-      context: .
+    image: *image
+    pull_policy: always
     restart: unless-stopped
     command: ["npm", "run", "start:worker"]
     environment:
