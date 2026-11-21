@@ -8,7 +8,7 @@ function createClient(): PrismaClient {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PrismaBetterSqlite3 } = require("@prisma/adapter-better-sqlite3");
     const p = url.slice(5).split("?")[0];
-    const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+    const abs = path.isAbsolute(p) ? p : path.resolve(/*turbopackIgnore: true*/ process.cwd(), p);
     return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: "file:" + abs }) });
   }
   if (/^postgres(ql)?:/.test(url)) {

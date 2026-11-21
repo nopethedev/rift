@@ -14,6 +14,8 @@ export interface StartSessionRequest {
   /** Target video heights, descending (e.g. [1080,720,480]). Worker drops entries above the source height; always keeps >=1 rendition. */
   ladder: number[];
   hwaccel: HwAccel;
+  /** Optional (worker addition): expected playback start in seconds; the worker pre-warms the first variant there. Default 0. */
+  startPosition?: number;
 }
 
 export interface SessionVariant { height: number; width: number; bandwidth: number; videoMode: "copy" | "transcode" }

@@ -1,7 +1,7 @@
 import "server-only";
 import path from "node:path";
 
-const abs = (p: string) => (path.isAbsolute(p) ? p : path.resolve(process.cwd(), p));
+const abs = (p: string) => (path.isAbsolute(p) ? p : path.resolve(/*turbopackIgnore: true*/ process.cwd(), p));
 
 export const env = {
   dataDir: abs(process.env.DATA_DIR || "./data"),

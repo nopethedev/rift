@@ -16,7 +16,8 @@
     "db:setup": "node scripts/db.mjs setup",
     "db:migrate:dev": "node scripts/db.mjs migrate-dev",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:worker": "tsx worker/selftest.ts"
   },
   "dependencies": {
     "@mediabunny/ac3": "^1.66.2",
