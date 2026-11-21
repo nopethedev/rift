@@ -66,6 +66,9 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          # No attestation manifests: they confuse the per-platform digests we merge below (and show as "unknown/unknown" on GHCR).
+          provenance: false
+          sbom: false
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ env.SLUG }}
           cache-to: type=gha,mode=max,scope=${{ env.SLUG }}
@@ -114,5 +117,6 @@ jobs:
       - name: Create manifest list
         working-directory: /tmp/digests
         run: docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") $(printf "${IMAGE}@sha256:%s " *)
-      - name: Inspect
+      - name: Inspect (informational)
+        continue-on-error: true
         run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
