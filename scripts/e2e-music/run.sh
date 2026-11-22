@@ -13,25 +13,32 @@ export E="${E2E_DIR:-$(mktemp -d)}"
 export E2E_FILE_BASE="http://127.0.0.1:8099"
 export PLAYWRIGHT_RESOLVE_FROM="${PLAYWRIGHT_RESOLVE_FROM:-/opt/node-tools/}"
 PIDS=()
-cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; pkill -P $$ 2>/dev/null || true; }
+cleanup() {
+  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; pkill -P $$ 2>/dev/null || true
+  # npm/tsx spawn grandchildren that a plain kill of the wrapper leaves running (and holding the ports)
+  pkill -f "next-server" 2>/dev/null || true; pkill -f "next dev -p 3100" 2>/dev/null || true; pkill -f "worker/index.ts" 2>/dev/null || true
+}
 trap cleanup EXIT
 cd "$ROOT"
+if curl -fs -o /dev/null http://localhost:3100/login 2>/dev/null; then echo "port 3100 is already in use (stale dev server?); stop it first"; exit 1; fi
 mkdir -p "$E/transcode" "$E/data"
 bash "$HERE/fixtures.sh"
 cp "$HERE/ytdlp-wrap.py" "$E/ytdlp-wrap.py" && chmod +x "$E/ytdlp-wrap.py"
 
+node "$HERE/fake-catalog.mjs" 8098 "$E" >"$E/catalog.log" 2>&1 & PIDS+=($!)
 python3 -m http.server 8099 --bind 127.0.0.1 --directory "$E/files" >/dev/null 2>&1 & PIDS+=($!)
 env WORKER_TOKEN=e2e WORKER_PORT=4100 WORKER_HOST=127.0.0.1 TRANSCODE_DIR="$E/transcode" YTDLP_PATH="$E/ytdlp-wrap.py" \
   SINK_PUBLIC_HOST=localhost SINK_PUBLIC_IP=127.0.0.1 SINK_WSS_PORT=24443 SINK_UDP_PORT=24444 SINK_TLS_DIR="$E/sink" \
   npx tsx worker/index.ts >"$E/worker.log" 2>&1 & PIDS+=($!)
-env DATABASE_URL="file:$E/rift.db" DATA_DIR="$E/data" MEDIA_DIR="$E/media" WORKER_URL=http://127.0.0.1:4100 WORKER_TOKEN=e2e \
+env DEEZER_API_URL=http://localhost:8098 ITUNES_API_URL=http://localhost:8098/itunes WIKIPEDIA_API_URL=http://localhost:8098/wiki MUSIC_ART_HOSTS=localhost:8098 \
+  DATABASE_URL="file:$E/rift.db" DATA_DIR="$E/data" MEDIA_DIR="$E/media" WORKER_URL=http://127.0.0.1:4100 WORKER_TOKEN=e2e \
   npm run dev -- -p 3100 >"$E/web.log" 2>&1 & PIDS+=($!)
 for _ in $(seq 1 90); do curl -fs -o /dev/null http://localhost:3100/login && break; sleep 1; done
 curl -fs -o /dev/null http://localhost:3100/login || { echo "web server did not start; see $E/web.log"; exit 1; }
 for _ in $(seq 1 30); do [ -s "$E/sink/cert.pem" ] && break; sleep 1; done
 
 rc=0
-for part in part1-local part2-ondemand part4-security; do
+for part in ${PARTS:-part1-local part2-ondemand part4-security part6-discover}; do
   echo "=== $part"; node "$HERE/$part.mjs" || rc=1
 done
 if [ -n "${LAVALINK_JAR:-}" ] && command -v java >/dev/null; then
@@ -49,4 +56,6 @@ else
   echo "=== part3-lavalink skipped (set LAVALINK_JAR and install Java to run it)"
 fi
 pkill -f 'Lavalink.jar' 2>/dev/null || true
+# E2E_HOLD=1: keep the stack running (for debugging) until $E/hold is removed
+if [ -n "${E2E_HOLD:-}" ]; then touch "$E/hold"; echo "holding: rm $E/hold to stop"; while [ -e "$E/hold" ]; do sleep 2; done; fi
 exit $rc

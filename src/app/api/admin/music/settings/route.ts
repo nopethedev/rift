@@ -12,8 +12,8 @@ const node = z.object({
   url: z.string().trim().url().refine((u) => /^https?:\/\//.test(u), "Must be http(s)"), password: z.string().max(300), searchPrefix: z.string().trim().regex(/^[a-z]{2,20}$/i, "e.g. scsearch, ytsearch"),
 });
 const schema = z.object({
-  musicSource: z.enum(["local", "ondemand", "hybrid"]), musicEngine: z.enum(["ytdlp", "lavalink"]),
-  musicPreload: z.boolean(), musicPreloadCount: z.number().int().min(1).max(5),
+  musicSource: z.enum(["local", "ondemand", "hybrid"]), musicEngine: z.enum(["auto", "ytdlp", "lavalink"]),
+  musicMetadata: z.boolean(), musicPreload: z.boolean(), musicPreloadCount: z.number().int().min(1).max(5),
   musicCacheDir: z.string().trim().max(500).refine((p) => !p || path.isAbsolute(p), "Must be an absolute path"),
   musicMaxCacheMB: z.number().int().min(64).max(10_000_000), musicCacheCleanup: z.boolean(), musicCleanupGraceSec: z.number().int().min(0).max(86400),
   musicFormat: z.enum(["mp3", "aac", "opus"]), musicBitrate: z.number().int().min(64).max(320),

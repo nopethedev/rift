@@ -111,6 +111,7 @@ export async function indexFile(file: string, source: "upload" | "import"): Prom
   };
   if (existing) { await db.musicTrack.update({ where: { id: existing.id }, data }); return { id: existing.id, created: false }; }
   const row = await db.musicTrack.create({ data: { path: file, ...data } });
+  if (!coverHash) void import("./artwork").then((m) => m.queueArtworkFill()).catch(() => {});
   return { id: row.id, created: true };
 }
 
@@ -179,6 +180,7 @@ export function scanMusic(dirs?: string[]): Promise<void> {
       rep.errors.push((e as Error).message);
     } finally {
       st.running = false; st.progress = null; st.finishedAt = new Date().toISOString(); st.last = rep; state.current = null;
+      void import("./artwork").then((m) => m.queueArtworkFill()).catch(() => {});
     }
   })();
   return state.current;

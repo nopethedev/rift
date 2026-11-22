@@ -44,7 +44,10 @@ export interface Settings {
   // ----- Rift Music -----
   /** Where tracks come from: the uploaded library, on-demand sources, or both (library first). */
   musicSource: "local" | "ondemand" | "hybrid";
-  musicEngine: "ytdlp" | "lavalink";
+  /** auto = Lavalink first (when a node is configured), yt-dlp when that fails. */
+  musicEngine: "auto" | "ytdlp" | "lavalink";
+  /** Look up album art, artist photos/bios, charts and new releases online (Deezer + Wikipedia; only artist/title text is sent). */
+  musicMetadata: boolean;
   musicPreload: boolean;
   musicPreloadCount: number;
   /** Temporary on-demand audio cache (on the worker's filesystem). Empty = the worker's default. */
@@ -100,7 +103,8 @@ export const defaultSettings = (): Settings => ({
   onDemandMaxStreams: Math.max(0, Number(process.env.STREAM_MAX_SESSIONS) || 3),
   onDemandAccess: "admins",
   musicSource: "local",
-  musicEngine: "ytdlp",
+  musicEngine: "auto",
+  musicMetadata: true,
   musicPreload: true,
   musicPreloadCount: 2,
   musicCacheDir: process.env.MUSIC_CACHE_DIR || "",

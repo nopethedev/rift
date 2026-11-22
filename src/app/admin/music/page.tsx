@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { CloudDownload, Disc3, FolderSearch, Trash2, Upload } from "lucide-react";
+import { CloudDownload, Disc3, FolderSearch, ImageDown, Trash2, Upload } from "lucide-react";
 import { usePoll } from "@/lib/use-poll";
 import { api, Badge, Button, Card, ProgressBar, Skeleton } from "@/components/ui";
 import { ErrorNote, PageHeader, ago } from "../parts";
@@ -37,6 +37,13 @@ export default function AdminMusicPage() {
     }
     status.reload(); recent.reload();
   }
+  const [artBusy, setArtBusy] = useState(false);
+  async function fetchArt() {
+    setArtBusy(true); setMsg("");
+    try { const r = await api<{ result: { albums: number; found: number; tracks: number } }>("/api/admin/music/artwork", { method: "POST" }); setMsg(r.result.albums ? `Album art: found covers for ${r.result.found} of ${r.result.albums} albums (${r.result.tracks} songs).` : "Every song already has a cover, or online lookup is switched off."); status.reload(); }
+    catch (e) { setMsg((e as Error).message); }
+    setArtBusy(false);
+  }
   async function scan() { setMsg(""); try { await api("/api/admin/music/scan", { method: "POST" }); status.reload(); } catch (e) { setMsg((e as Error).message); } }
   async function clearCache() { try { const r = await api<{ removed: number }>("/api/admin/music/cache", { method: "DELETE" }); setMsg(`Removed ${r.removed} cached track(s).`); status.reload(); } catch (e) { setMsg((e as Error).message); } }
   async function del(t: TrackDTO) { if (!confirm(`Remove “${t.title}” from the library? (The file is kept unless you uploaded it.)`)) return; await api(`/api/admin/music/tracks/${t.id}?file=1`, { method: "DELETE" }); recent.reload(); status.reload(); }
@@ -45,7 +52,7 @@ export default function AdminMusicPage() {
   const w = s.worker;
   return (
     <>
-      <PageHeader title="Music" subtitle="Local library, upload, and the on-demand streaming backend." actions={<><Link href="/admin/music/settings"><Button variant="secondary">Settings</Button></Link><Button onClick={scan} loading={s.scan.running}><FolderSearch className="size-4" /> Scan folders</Button></>} />
+      <PageHeader title="Music" subtitle="Local library, upload, and the on-demand streaming backend." actions={<><Link href="/admin/music/settings"><Button variant="secondary">Settings</Button></Link><Button variant="secondary" onClick={fetchArt} loading={artBusy}><ImageDown className="size-4" /> Fetch missing album art</Button><Button onClick={scan} loading={s.scan.running}><FolderSearch className="size-4" /> Scan folders</Button></>} />
       <ErrorNote msg={msg} />
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[["Tracks", s.library.tracks], ["Albums", s.library.albums], ["Artists", s.library.artists], ["Library size", gb(s.library.bytes)]].map(([k, v]) => <Card key={k as string}><p className="text-xs uppercase tracking-wide text-muted">{k}</p><p className="mt-1 text-2xl font-bold">{v}</p></Card>)}
@@ -70,7 +77,7 @@ export default function AdminMusicPage() {
           {!w.ok ? <p className="text-sm text-amber-300">Worker unreachable: {w.error}</p> : (
             <>
               <div className="flex flex-wrap gap-2 text-xs">
-                <Badge tone="accent">engine: {w.engine === "lavalink" ? "Lavalink" : "yt-dlp"}</Badge>
+                <Badge tone="accent">engine: {w.engine === "lavalink" ? "Lavalink" : w.engine === "auto" ? "Lavalink → yt-dlp" : "yt-dlp"}</Badge>
                 <Badge tone={w.ytdlp.available ? "green" : "amber"}>yt-dlp {w.ytdlp.available ? w.ytdlp.version : "not installed"}</Badge>
                 <Badge tone={w.lavalink.sinkReady ? "green" : "amber"}>audio bridge {w.lavalink.sinkReady ? "ready" : "off"}</Badge>
               </div>

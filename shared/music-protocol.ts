@@ -2,6 +2,8 @@
 // Same auth as the transcoding API: `Authorization: Bearer ${WORKER_TOKEN}`. All endpoints live under /music.
 
 export type MusicEngineId = "ytdlp" | "lavalink";
+/** "auto" tries Lavalink first (when a node is configured) and falls back to yt-dlp when it cannot deliver. */
+export type MusicEngineChoice = MusicEngineId | "auto";
 export type AudioFormat = "mp3" | "aac" | "opus";
 export type LicensePolicy = "licensed-only" | "attested";
 
@@ -17,7 +19,7 @@ export interface LavalinkNodeConfig {
 
 /** Everything the worker needs; sent with every request so the worker keeps no settings of its own. */
 export interface MusicConfig {
-  engine: MusicEngineId;
+  engine: MusicEngineChoice;
   /** Empty = the worker's default (MUSIC_CACHE_DIR or <TRANSCODE_DIR>/music-cache). */
   cacheDir: string;
   maxCacheMB: number;
@@ -106,7 +108,7 @@ export interface ReleaseRequest {
 }
 
 export interface MusicStats {
-  engine: MusicEngineId | null;
+  engine: MusicEngineChoice | null;
   cacheDir: string;
   cacheBytes: number;
   maxCacheBytes: number;

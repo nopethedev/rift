@@ -21,7 +21,8 @@ export function ProfilePicker({ profiles, max, startManaging }: { profiles: P[];
     setError("");
     try {
       await api(`/api/profiles/${p.id}`, { method: "POST", body: { pin } });
-      router.replace("/");
+      document.cookie = "rift_app=; Path=/; Max-Age=0"; // a new profile starts at the app picker
+      router.replace("/apps");
       router.refresh();
     } catch (e) {
       setError((e as Error).message);

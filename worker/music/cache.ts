@@ -12,7 +12,7 @@ import { createReadStream, createWriteStream, type WriteStream } from "node:fs";
 import path from "node:path";
 import { AUDIO_MIME, type AudioFormat, type Candidate, type EntryState, type EntryStatus, type HoldRole, type MusicConfig, type PrepareRequest, type ReleaseRequest, type TrackQuery } from "../../shared/music-protocol";
 import { normalize } from "../../shared/music-match";
-import { EngineError, type Engine } from "./engines/types";
+import { EngineError, engineChain, type Engine } from "./engines/types";
 
 export class BusyError extends Error {}
 
@@ -30,6 +30,8 @@ class Job extends EventEmitter {
   state: "queued" | "running" | "ready" | "failed" = "queued";
   bytes = 0;
   error?: string;
+  /** Failed because the engine itself is unusable (no node, bridge down): other candidates of that engine would fail too. */
+  engineDown = false;
   realtime = false;
   startedAt = 0;
   lastUsed = Date.now();
@@ -241,28 +243,35 @@ export class MusicCache {
     entry.resolving = true;
     entry.error = undefined;
     try {
-      const engine = this.o.engines[cfg.engine];
-      if (!engine) throw new EngineError(`Unknown engine ${cfg.engine}`);
-      const cands = entry.pinned ? [entry.pinned] : await this.resolveQuery(entry.query!, cfg, engine);
-      entry.candidates = cands;
+      // A pinned candidate (user picked a search result) belongs to one engine; otherwise walk the engine chain
+      // (auto = Lavalink, then yt-dlp): an engine that cannot resolve or deliver hands over to the next one.
       let lastErr = "no candidates";
-      for (const c of cands) {
-        if (entry.priority(Date.now()) === 0) { entry.resolving = false; this.entries.delete(entry.key); return; } // everyone left while resolving
-        const job = this.jobFor(c, cfg);
-        entry.job = job;
-        job.entries.add(entry);
-        job.unheldSince = null;
-        entry.emit("change");
-        this.schedule();
+      const chain: (Engine | null)[] = entry.pinned ? [null] : engineChain(cfg, this.o.engines);
+      for (const engine of chain) {
+        let cands: Candidate[];
         try {
-          await job.firstByte;
-          entry.resolving = false;
-          return;
-        } catch (e) {
-          lastErr = (e as Error).message;
-          job.entries.delete(entry);
-          entry.job = undefined;
-          if (job.state === "failed") this.removeJobIfOrphan(job);
+          cands = entry.pinned ? [entry.pinned] : await this.resolveQuery(entry.query!, cfg, engine!);
+        } catch (e) { lastErr = (e as Error).message; continue; }
+        entry.candidates = cands;
+        for (const c of cands) {
+          if (entry.priority(Date.now()) === 0) { entry.resolving = false; this.entries.delete(entry.key); return; } // everyone left while resolving
+          const job = this.jobFor(c, cfg);
+          entry.job = job;
+          job.entries.add(entry);
+          job.unheldSince = null;
+          entry.emit("change");
+          this.schedule();
+          try {
+            await job.firstByte;
+            entry.resolving = false;
+            return;
+          } catch (e) {
+            lastErr = (e as Error).message;
+            job.entries.delete(entry);
+            entry.job = undefined;
+            if (job.state === "failed") this.removeJobIfOrphan(job);
+            if (job.engineDown) break; // go straight to the next engine
+          }
         }
       }
       throw new EngineError(lastErr);
@@ -275,14 +284,16 @@ export class MusicCache {
   }
 
   /** Resolve a song to candidate recordings without downloading anything (cached, de-duplicated). */
-  resolve(q: TrackQuery, cfg: MusicConfig): Promise<Candidate[]> {
-    const engine = this.o.engines[cfg.engine];
-    if (!engine) throw new EngineError(`Unknown engine ${cfg.engine}`);
-    return this.resolveQuery(q, cfg, engine);
+  async resolve(q: TrackQuery, cfg: MusicConfig): Promise<Candidate[]> {
+    let last: unknown;
+    for (const engine of engineChain(cfg, this.o.engines)) {
+      try { return await this.resolveQuery(q, cfg, engine); } catch (e) { last = e; }
+    }
+    throw last;
   }
 
   private async resolveQuery(q: TrackQuery, cfg: MusicConfig, engine: Engine): Promise<Candidate[]> {
-    const rk = MusicCache.queryKey(q, cfg);
+    const rk = `${engine.id}|${MusicCache.queryKey(q, cfg)}`;
     const hit = this.resolveCache.get(rk);
     if (hit && Date.now() - hit.at < RESOLVE_TTL_MS) return hit.cands;
     let p = this.resolveInflight.get(rk);
@@ -413,6 +424,7 @@ export class MusicCache {
       if (out) out.destroy();
       await fs.rm(j.partPath, { force: true });
       j.bytes = 0;
+      if (e instanceof EngineError && e.code === "unavailable") j.engineDown = true;
       if ((j.state as string) !== "failed") j.fail(msg);
       this.removeJobIfOrphan(j);
     } finally {

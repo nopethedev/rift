@@ -10,6 +10,7 @@ import { fetchSpotify, SpotifyError, type ImportedPlaylist } from "./spotify";
 import type { ItemInput } from "./queue";
 import { musicWorker } from "./worker";
 import { seal, unseal } from "./seal";
+import { matchPatch } from "./saved";
 
 export type Availability = "local" | "ondemand" | "unavailable";
 export interface PlaylistItemDTO {
@@ -87,6 +88,17 @@ export async function removeFromPlaylist(profileId: string, id: string, itemId: 
   await db.$transaction(rest.map((r, position) => db.musicPlaylistItem.update({ where: { id: r.id }, data: { position } })));
 }
 
+/** The user matches an (unavailable or wrongly matched) playlist entry by hand. */
+export async function matchPlaylistItem(profileId: string, id: string, itemId: string, pick: { trackId: string } | { candidate: unknown } | { clear: true }) {
+  await owned(profileId, id);
+  const item = await db.musicPlaylistItem.findFirst({ where: { id: itemId, playlistId: id } });
+  if (!item) throw new HttpError(404, "Playlist entry not found");
+  const patch = await matchPatch(pick);
+  const availability = patch.trackId ? "local" : patch.candidate ? "ondemand" : null;
+  await db.musicPlaylistItem.update({ where: { id: itemId }, data: { ...patch, availability, availabilityNote: availability ? MANUAL : null, checkedAt: availability ? new Date() : null } });
+  await db.musicPlaylist.update({ where: { id }, data: { updatedAt: new Date() } });
+}
+
 /** Queue inputs for playing a playlist: unavailable entries are skipped, matches keep their pinned source. */
 export async function playlistInputs(profileId: string, id: string): Promise<{ inputs: ItemInput[]; ids: string[] }> {
   await owned(profileId, id);
@@ -98,13 +110,17 @@ export async function playlistInputs(profileId: string, id: string): Promise<{ i
 }
 
 // ---------- Spotify import / sync ----------
+const MANUAL = "Matched by you";
 async function writeImported(playlistId: string, imp: ImportedPlaylist) {
+  // Matches the user made by hand survive a re-sync (keyed by the Spotify track id).
+  const manual = new Map((await db.musicPlaylistItem.findMany({ where: { playlistId, availabilityNote: MANUAL, externalId: { not: null } } })).map((i) => [i.externalId!, i]));
   await db.musicPlaylistItem.deleteMany({ where: { playlistId } });
   let position = 0;
   for (const t of imp.tracks) {
-    const local = await findLocalMatch(t.title, t.artist, t.durationSec);
+    const kept = t.externalId ? manual.get(t.externalId) : undefined;
+    const local = kept ? null : await findLocalMatch(t.title, t.artist, t.durationSec);
     await db.musicPlaylistItem.create({
-      data: { playlistId, position: position++, trackId: local?.id ?? null, title: t.title, artist: t.artist, album: t.album ?? null, durationSec: t.durationSec ?? null, artworkUrl: t.artworkUrl ?? null, externalId: t.externalId ?? null, isrc: t.isrc ?? null, availability: local ? "local" : null },
+      data: kept ? { playlistId, position: position++, trackId: kept.trackId, candidate: kept.candidate, availability: kept.availability, availabilityNote: MANUAL, checkedAt: kept.checkedAt, title: t.title, artist: t.artist, album: t.album ?? null, durationSec: t.durationSec ?? null, artworkUrl: t.artworkUrl ?? null, externalId: t.externalId ?? null, isrc: t.isrc ?? null } : { playlistId, position: position++, trackId: local?.id ?? null, title: t.title, artist: t.artist, album: t.album ?? null, durationSec: t.durationSec ?? null, artworkUrl: t.artworkUrl ?? null, externalId: t.externalId ?? null, isrc: t.isrc ?? null, availability: local ? "local" : null },
     });
   }
   await db.musicPlaylist.update({ where: { id: playlistId }, data: { name: imp.name.slice(0, 120), description: imp.description?.slice(0, 500) ?? undefined, artworkUrl: imp.artworkUrl ?? null, lastSyncedAt: new Date() } });
@@ -152,7 +168,10 @@ export function startCheck(profileId: string, user: { role: "ADMIN" | "USER" }, 
       const s = await getSettings();
       const mode = musicMode(s, user);
       const cfg = toWorkerConfig(s);
-      const items = await db.musicPlaylistItem.findMany({ where: { playlistId, ...(force ? {} : { OR: [{ availability: null }, { availability: "unavailable", checkedAt: { lt: new Date(Date.now() - 3600_000) } }] }) }, orderBy: { position: "asc" } });
+      // Entries the user matched by hand are never re-checked. (SQL: `NOT (note = x)` is NULL for a NULL note, hence the explicit OR.)
+      const notManual = { OR: [{ availabilityNote: null }, { availabilityNote: { not: MANUAL } }] };
+      const stale = { OR: [{ availability: null }, { availability: "unavailable", checkedAt: { lt: new Date(Date.now() - 3600_000) } }] };
+      const items = await db.musicPlaylistItem.findMany({ where: { playlistId, AND: force ? [notManual] : [notManual, stale] }, orderBy: { position: "asc" } });
       st.total = items.length;
       let i = 0;
       const one = async () => {

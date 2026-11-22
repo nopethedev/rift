@@ -7,7 +7,7 @@ import path from "node:path";
 import { z } from "zod";
 import { AUDIO_MIME, type AudioFormat, type MusicStats } from "../../shared/music-protocol";
 import { BusyError, ffmpegArgs, type MusicCache } from "./cache";
-import { EngineError, type Engine } from "./engines/types";
+import { EngineError, engineChain, type Engine } from "./engines/types";
 import { ytdlpVersion } from "./engines/ytdlp";
 import { LavalinkNode, type LavalinkPool } from "./lavalink";
 import { HttpError } from "../sessions";
@@ -28,7 +28,7 @@ export interface RouteHelpers {
 
 const node = z.object({ id: z.string().max(64), name: z.string().max(80), url: z.string().url(), password: z.string().max(300), searchPrefix: z.string().max(40) });
 const cfgSchema = z.object({
-  engine: z.enum(["ytdlp", "lavalink"]),
+  engine: z.enum(["auto", "ytdlp", "lavalink"]),
   cacheDir: z.string().max(500),
   maxCacheMB: z.number().min(16).max(10_000_000),
   cleanup: z.boolean(),
@@ -93,8 +93,16 @@ export async function handleMusic(svc: MusicService, req: http.IncomingMessage, 
     }
     if (method === "POST" && sub === "search") {
       const b = z.object({ cfg: cfgSchema, q: z.string().min(1).max(200), limit: z.number().int().min(1).max(25).default(10) }).parse(await h.readJson(req));
-      const engine = svc.engines[b.cfg.engine];
-      return h.sendJson(res, 200, { candidates: await engine.search(b.q, b.cfg, b.limit) });
+      // Same chain as playback: the first engine that answers with results wins (auto: Lavalink, then yt-dlp).
+      let last: unknown;
+      for (const engine of engineChain(b.cfg, svc.engines)) {
+        try {
+          const candidates = await engine.search(b.q, b.cfg, b.limit);
+          if (candidates.length) return h.sendJson(res, 200, { candidates, engine: engine.id });
+        } catch (e) { last = e; }
+      }
+      if (last) throw last;
+      return h.sendJson(res, 200, { candidates: [] });
     }
     if (method === "POST" && sub === "resolve") {
       // Resolve only (no download): which recordings would be used for this song?

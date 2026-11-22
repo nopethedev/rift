@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { route, body } from "@/server/api";
 import { itemInput } from "@/server/music/queue";
-import { addToPlaylist, removeFromPlaylist } from "@/server/music/playlists";
+import { addToPlaylist, matchPlaylistItem, removeFromPlaylist } from "@/server/music/playlists";
 
 export const POST = route<{ id: string }>("profile", async ({ req, params, profile }) => {
   const b = await body(req, z.object({ items: z.array(itemInput).min(1).max(500) }));
@@ -10,4 +10,8 @@ export const POST = route<{ id: string }>("profile", async ({ req, params, profi
 export const DELETE = route<{ id: string }>("profile", async ({ req, params, profile }) => {
   const b = await body(req, z.object({ itemId: z.string().min(1).max(64) }));
   await removeFromPlaylist(profile.id, params.id, b.itemId);
+});
+export const PATCH = route<{ id: string }>("profile", async ({ req, params, profile }) => {
+  const b = await body(req, z.object({ itemId: z.string().min(1).max(64), match: z.union([z.object({ trackId: z.string().min(1).max(64) }), z.object({ candidate: z.any() }), z.object({ clear: z.literal(true) })]) }));
+  await matchPlaylistItem(profile.id, params.id, b.itemId, b.match);
 });

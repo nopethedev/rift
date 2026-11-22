@@ -24,6 +24,13 @@ check("bundled-node config generator (password masked in preview)", /sources:/.t
 const sres = await api.get("/api/music/search/ondemand?q=" + encodeURIComponent(URLS[0]));
 const sj = await sres.json();
 check("on-demand search through Lavalink (direct link)", sres.ok() && sj.candidates?.[0]?.sourceName === "http" && sj.candidates[0].engine === "lavalink", JSON.stringify(sj).slice(0, 200));
+// ---- engine "auto": Lavalink first, yt-dlp second
+await put({ musicEngine: "auto" });
+const a1 = await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent(URLS[0]))).json();
+check("auto engine: Lavalink is tried first and wins when it has results", a1.candidates?.[0]?.engine === "lavalink", JSON.stringify(a1).slice(0, 160));
+const a2 = await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent("alpha track"))).json();
+check("auto engine: what Lavalink cannot find comes from yt-dlp", a2.candidates?.[0]?.engine === "ytdlp", JSON.stringify(a2).slice(0, 160));
+await put({ musicEngine: "lavalink" });
 const cands = [];
 for (const u of URLS) cands.push((await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent(u))).json()).candidates[0]);
 const items = cands.map((c, i) => ({ title: `Lava ${i + 1}`, artist: "Bridge", durationSec: 10, candidate: c }));

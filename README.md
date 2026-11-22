@@ -146,7 +146,17 @@ Playback uses direct play or in-browser Mediabunny (so DD+ still works); video t
 
 ## Rift Music
 
-Open **Music** in the top bar (or the bottom tabs on a phone). It has a persistent player (it keeps playing while you browse), a per-profile queue that survives reloads, shuffle / repeat / autoplay, playlists, search and recommendations.
+After you sign in and pick a profile, an **app picker** asks whether you want **Stream** (movies / TV) or **Music** (shown once each time the browser is opened; *Switch app* is in the account menu, and a direct `/music` link skips it). Music has its own Spotify-style layout: a left sidebar (Home, Search, Your Library, Liked songs, your playlists), a top search bar, a persistent player (it keeps playing while you browse) and a per-profile queue that survives reloads, with shuffle / repeat / autoplay, playlists, search and recommendations.
+
+### Home feed, album art and artist pages (online metadata)
+With **Admin → Music → Settings → "Online album art, artist info and music feed"** on (default), Rift asks Deezer's public API (no key), iTunes and Wikipedia for **metadata only**. Only artist / album / title text is sent, never your listening, and no audio comes from these services.
+
+- **Home**: quick picks (Liked songs, playlists, albums you played lately), your library shelves, then online shelves: *Trending now*, *New releases*, *Popular artists*, *Top albums*, *More from / Fans of …* (built from your play history), *Top <your favourite genre>* and *Browse all* genres. Click a song to play it: the library is used first, otherwise it is streamed on demand (so the on-demand rules and the rights confirmation below still apply).
+- **Album art**: songs with no cover get one automatically after a scan or upload: one lookup per album (Deezer, iTunes as a fallback), stored in your data folder, never replacing embedded covers; misses are retried after a week. *Admin → Music → Fetch missing album art* runs it now. Remote artwork shown in the UI is fetched and cached by the server (allow-listed image hosts only), so browsers never contact third parties.
+- **Artist pages** (`/music/artists/<name>`): a collapsible **info panel on the left** (photo, fans, biography from Wikipedia with *Show more*, similar artists, what you own; each section expands, and the whole panel collapses to a rail), then popular songs, your library songs, the discography (albums / singles & EPs) and *Fans also like*. Albums (`/music/release/<id>`) and genres (`/music/genre/<id>`) have pages too.
+
+### Liked songs, your library, and matching songs yourself
+Every song row has a **heart**: it adds the song to **Liked songs** (your saved library, per profile). Songs you don't own stay on-demand references: audio is never stored permanently. If a song (in a Spotify import, a playlist or Liked songs) isn't matched, or is matched wrongly, press **Match** and pick the right recording from your library or from the on-demand search; the choice is pinned, survives *Check sources* and Spotify re-syncs, and can be cleared.
 
 ### Where songs come from (Admin → Music → Settings)
 
@@ -155,6 +165,8 @@ Open **Music** in the top bar (or the bottom tabs on a phone). It has a persiste
 | **Local library** | Only your uploaded / imported files. |
 | **On-demand** | Every song is fetched when needed from an external source (no library required). |
 | **Hybrid** | Library first; anything not in the library is fetched on demand. |
+
+**On-demand engine**: *Both (recommended)* tries **Lavalink first and falls back to yt-dlp** whenever Lavalink has no match, its node/bridge is down or the track fails (with no Lavalink node configured it is simply yt-dlp); or pick *yt-dlp only* / *Lavalink only*. Search uses the same order.
 
 **Local library.** Upload on *Admin → Music* (streamed straight to disk) or point Rift at folders (`/media/music` by default; rescanned every 10 minutes). MP3, FLAC, AAC/M4A, OGG, WAV and Opus are indexed with their tags, cover art (embedded or `cover.jpg`), artist, album, genre and year. Files play directly with HTTP Range (seeking). If the browser reports it can't decode a codec (or the file is WMA, ALAC, …) the worker converts it with FFmpeg on the fly; seeking in a converted stream restarts it at the new offset.
 
@@ -185,7 +197,7 @@ Lavalink does **not** expose an audio stream: it only sends Opus to a Discord-st
 *Music → Playlists → Import from Spotify*: paste a public playlist or album link. Rift imports names, artists, artwork and order (metadata only), matches each track to your library, then checks the on-demand source for the rest and marks every entry **in library / on-demand / unavailable** (with the reason). *Sync* re-imports the link; *Check sources* re-runs the availability check. Without credentials Rift reads the first 100 tracks of public playlists from Spotify's embed page; with a client id/secret (Admin → Music) it imports whole playlists through the Web API. Private playlists are not supported. (The Spotify fetching code is unit-tested against recorded page/API shapes; it could not be run against Spotify from the development environment.)
 
 ### Tests
-`npm test` runs the matcher, queue logic, candidate signing, Spotify mappers and the worker pipeline (real FFmpeg, a synthetic engine: live-tail streaming, Range, de-duplication, preload cancel, cleanup, limits, eviction). With `yt-dlp` installed and `LAVALINK_JAR=/path/Lavalink.jar` (+ Java) the same suite also runs real yt-dlp and a real Lavalink node end to end (`worker/music/e2e.test.ts`). `scripts/e2e-music/` drives the whole stack in headless Chromium.
+`npm test` runs the matcher, queue logic, candidate signing, Spotify mappers and the worker pipeline (real FFmpeg, a synthetic engine: live-tail streaming, Range, de-duplication, preload cancel, cleanup, limits, eviction). With `yt-dlp` installed and `LAVALINK_JAR=/path/Lavalink.jar` (+ Java) the same suite also runs real yt-dlp and a real Lavalink node end to end (`worker/music/e2e.test.ts`). `scripts/e2e-music/` drives the whole stack in headless Chromium (`PARTS="part1-local part6-discover" scripts/e2e-music/run.sh` runs a subset); `fake-catalog.mjs` stands in for Deezer / iTunes / Wikipedia so the feed, album art, artist pages and liked songs are tested without internet.
 
 ## Layout
 

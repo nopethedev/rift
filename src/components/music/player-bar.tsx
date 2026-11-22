@@ -3,7 +3,7 @@ import { useState } from "react";
 import clsx from "clsx";
 import { AlertTriangle, ChevronDown, CloudDownload, ListMusic, Loader2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Trash2, Volume2, VolumeX, X, Infinity as Auto, ArrowUp, ArrowDown } from "lucide-react";
 import { fmtTime, type QueueItem } from "@/lib/music-types";
-import { Cover } from "./parts";
+import { Cover, HeartButton } from "./parts";
 import { useMusic } from "./player-provider";
 
 function Seek({ className }: { className?: string }) {
@@ -27,6 +27,14 @@ function Seek({ className }: { className?: string }) {
       <span className="w-9">{fmtTime(max)}</span>
     </div>
   );
+}
+
+/** Like / unlike whatever is playing now. */
+function CurrentHeart({ className }: { className?: string }) {
+  const { current } = useMusic();
+  if (!current) return null;
+  const input = current.trackId ? { trackId: current.trackId } : { title: current.title, artist: current.artist, album: current.album, durationSec: current.durationSec, artworkUrl: current.artworkUrl };
+  return <HeartButton item={{ input, title: current.title, artist: current.artist }} className={clsx("sm:!opacity-100", className)} />;
 }
 
 function StatusLine({ className }: { className?: string }) {
@@ -73,6 +81,7 @@ export function PlayerBar() {
           <div className="hidden min-w-0 flex-col gap-0.5 md:flex"><Controls /><Seek /></div>
           <div className="hidden items-center justify-end gap-2 md:flex">
             <StatusLine className="max-w-60" />
+            <CurrentHeart />
             <button aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted(!muted)} className="text-white/70 hover:text-white">{muted || volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}</button>
             <input type="range" aria-label="Volume" className="rift-range w-24" min={0} max={1} step={0.02} value={muted ? 0 : volume} onChange={(e) => { setMuted(false); setVolume(Number(e.target.value)); }} style={{ ["--track" as string]: `linear-gradient(90deg,#fff ${(muted ? 0 : volume) * 100}%,#ffffff33 ${(muted ? 0 : volume) * 100}%)` }} />
             <button aria-label="Queue" onClick={() => setOpen(true)} className="relative rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white"><ListMusic className="size-5" />{!!queue?.items.length && <span className="absolute -right-0.5 -top-0.5 rounded-full bg-accent px-1 text-[9px] font-bold">{queue.items.length}</span>}</button>
@@ -132,7 +141,7 @@ export function NowPlaying({ onClose }: { onClose: () => void }) {
       <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-6 overflow-y-auto px-4 pb-6 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] md:gap-10">
         <div className="flex flex-col items-center gap-4">
           <Cover src={current.artworkUrl} className="aspect-square w-full max-w-72 md:max-w-none" rounded="rounded-2xl" />
-          <div className="w-full text-center"><p className="truncate text-xl font-bold">{current.title}</p><p className="truncate text-sm text-muted">{current.artist}{current.album ? ` · ${current.album}` : ""}</p>
+          <div className="w-full text-center"><p className="flex items-center justify-center gap-1 text-xl font-bold"><span className="truncate">{current.title}</span><CurrentHeart /></p><p className="truncate text-sm text-muted">{current.artist}{current.album ? ` · ${current.album}` : ""}</p>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted">{play?.kind === "ondemand" ? "Streaming on demand" : play?.transcode ? "Library · converted for your browser" : "Library"}</p></div>
           <Seek className="w-full" />
           <Controls big />

@@ -7,7 +7,7 @@ import { ErrorNote, PageHeader } from "../../parts";
 
 type Node = { id: string; name: string; url: string; password: string; searchPrefix: string };
 type S = {
-  musicSource: "local" | "ondemand" | "hybrid"; musicEngine: "ytdlp" | "lavalink"; musicPreload: boolean; musicPreloadCount: number; musicCacheDir: string; musicMaxCacheMB: number;
+  musicSource: "local" | "ondemand" | "hybrid"; musicEngine: "auto" | "ytdlp" | "lavalink"; musicMetadata: boolean; musicPreload: boolean; musicPreloadCount: number; musicCacheDir: string; musicMaxCacheMB: number;
   musicCacheCleanup: boolean; musicCleanupGraceSec: number; musicFormat: "mp3" | "aac" | "opus"; musicBitrate: number; musicMaxStreams: number; musicMaxDownloads: number;
   musicOnDemandAccess: "admins" | "everyone"; musicRightsAttested: boolean; musicLicensePolicy: "licensed-only" | "attested"; musicSearchProviders: ("youtube" | "soundcloud")[];
   musicLibraryDirs: string[]; musicUploadDir: string; musicLavalinkNodes: Node[]; musicLavalinkAllowedSources: string[]; musicLavalinkPlugins: { dependency: string; repository: string }[];
@@ -47,7 +47,7 @@ export default function MusicSettingsPage() {
 
   if (loading || !s) return <><PageHeader title="Music settings" /><Skeleton className="h-96" /></>;
   const onDemand = s.musicSource !== "local";
-  const check = (label: string, k: "musicPreload" | "musicCacheCleanup" | "musicRightsAttested", help?: string) => (
+  const check = (label: string, k: "musicMetadata" | "musicPreload" | "musicCacheCleanup" | "musicRightsAttested", help?: string) => (
     <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={s[k]} onChange={(e) => set(k, e.target.checked)} className="mt-1 size-4 accent-violet-500" /><span><span className="font-medium">{label}</span>{help && <span className="block text-muted">{help}</span>}</span></label>
   );
   return (
@@ -63,8 +63,9 @@ export default function MusicSettingsPage() {
             <option value="hybrid">Hybrid (library first, on-demand for everything else)</option>
           </Select>
           <Select label="On-demand engine" value={s.musicEngine} onChange={(e) => set("musicEngine", e.target.value as S["musicEngine"])} disabled={!onDemand}>
-            <option value="ytdlp">yt-dlp</option>
-            <option value="lavalink">Lavalink</option>
+            <option value="auto">Both: Lavalink first, yt-dlp if it fails (recommended)</option>
+            <option value="ytdlp">yt-dlp only</option>
+            <option value="lavalink">Lavalink only</option>
           </Select>
           <Select label="Who can use on-demand" value={s.musicOnDemandAccess} onChange={(e) => set("musicOnDemandAccess", e.target.value as S["musicOnDemandAccess"])} disabled={!onDemand}>
             <option value="everyone">Everyone with an account</option><option value="admins">Administrators only</option>
@@ -83,6 +84,7 @@ export default function MusicSettingsPage() {
 
         <Card className="space-y-4">
           <h2 className="font-semibold">Streaming &amp; cache</h2>
+          {check("Online album art, artist info and music feed", "musicMetadata", "Fetches missing album covers, artist photos and bios, charts and new releases from Deezer, iTunes and Wikipedia. Only artist, album and title text is sent; nothing about your listening. Images are cached on this server.")}
           {check("Preload upcoming songs", "musicPreload", "Fetches the next songs in the queue before they play, and cancels them when the queue changes.")}
           <Input label="Songs to preload" type="number" min={1} max={5} value={s.musicPreloadCount} onChange={num("musicPreloadCount")} disabled={!s.musicPreload} />
           <Input label="Temporary cache directory" value={s.musicCacheDir} onChange={(e) => set("musicCacheDir", e.target.value)} placeholder="(worker default: <transcode dir>/music-cache)" hint="Path on the worker's filesystem (a rift-music subfolder is used). Temporary audio only." />

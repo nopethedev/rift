@@ -17,19 +17,23 @@ import type { SessionManager } from "../sessions";
 const mk = (id: string, dur = 2, extra: Partial<Candidate> = {}): Candidate => ({ engine: "ytdlp", sourceId: `t:${id}`, title: id, artist: "Test", durationSec: dur, url: `http://x/${id}`, score: 0.9, ...extra });
 
 class FakeEngine implements Engine {
-  id = "ytdlp" as const;
+  constructor(public id: "ytdlp" | "lavalink" = "ytdlp") {}
   opens: string[] = [];
   failIds = new Set<string>();
+  down = false;
+  resolveError?: EngineError;
   realtime = false;
   closed: string[] = [];
   async search() { return []; }
   async resolve(q: { title: string; durationSec?: number }) {
+    if (this.resolveError) throw this.resolveError;
     if (q.title === "nothing") throw new EngineError("No recording matched", "not-found");
-    if (q.title === "fallback") return [mk("bad"), mk("good")];
-    return [mk(q.title, q.durationSec ?? 2)];
+    if (q.title === "fallback") return ["bad", "good"].map((t) => mk(t, 2, { engine: this.id, sourceId: `${this.id === "ytdlp" ? "t" : "l"}:${t}` }));
+    return [mk(q.title, q.durationSec ?? 2, { engine: this.id, sourceId: this.id === "ytdlp" ? `t:${q.title}` : `l:${q.title}` })];
   }
   async open(c: Candidate): Promise<AudioSource> {
     this.opens.push(c.sourceId);
+    if (this.down) throw new EngineError("node is down", "unavailable");
     if (this.failIds.has(c.sourceId.slice(2)) || c.sourceId === "t:bad") throw new EngineError("source refused", "failed");
     const args = ["-loglevel", "error", ...(this.realtime ? ["-re"] : []), "-f", "lavfi", "-i", `sine=frequency=440:duration=${c.durationSec}`, "-f", "wav", "pipe:1"];
     const p = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "ignore"] });
@@ -170,6 +174,52 @@ describe("MusicCache", () => {
     const done = await ready(st.key);
     expect(done.candidate?.sourceId).toBe("t:good");
     expect(engine.opens).toEqual(["t:bad", "t:good"]);
+  });
+
+  describe("engine auto (Lavalink first, yt-dlp fallback)", () => {
+    let lava: FakeEngine;
+    const auto = () => cfgFor({ engine: "auto", lavalink: { nodes: [{ id: "n1", name: "n", url: "http://x", password: "p", searchPrefix: "scsearch" }], allowedSources: [] } });
+    beforeEach(async () => {
+      await cache.shutdown();
+      lava = new FakeEngine("lavalink");
+      cache = new MusicCache({ engines: { ytdlp: engine, lavalink: lava }, defaultDir: dir, sweepMs: 50 });
+    });
+
+    it("plays through Lavalink when it works", async () => {
+      const st = await cache.prepare({ cfg: auto(), query: q("viaLava"), holder: "p1", role: "current" });
+      const done = await ready(st.key);
+      expect(done.candidate?.engine).toBe("lavalink");
+      expect(engine.opens).toEqual([]);
+    });
+
+    it("falls back to yt-dlp when Lavalink cannot resolve the song", async () => {
+      lava.resolveError = new EngineError("no match", "not-found");
+      const st = await cache.prepare({ cfg: auto(), query: q("viaYt"), holder: "p1", role: "current" });
+      const done = await ready(st.key);
+      expect(done.candidate?.engine).toBe("ytdlp");
+    });
+
+    it("falls back to yt-dlp when the Lavalink node is down and does not retry its other candidates", async () => {
+      lava.down = true;
+      const st = await cache.prepare({ cfg: auto(), query: q("fallback"), holder: "p1", role: "current" });
+      const done = await ready(st.key);
+      expect(done.candidate?.engine).toBe("ytdlp");
+      expect(lava.opens).toEqual(["l:bad"]); // one attempt: "unavailable" skips the engine's remaining candidates
+    });
+
+    it("uses yt-dlp only when no Lavalink node is configured", async () => {
+      const st = await cache.prepare({ cfg: cfgFor({ engine: "auto" }), query: q("noNodes"), holder: "p1", role: "current" });
+      const done = await ready(st.key);
+      expect(done.candidate?.engine).toBe("ytdlp");
+      expect(lava.opens).toEqual([]);
+    });
+
+    it("reports the error when every engine fails", async () => {
+      lava.resolveError = new EngineError("lavalink: nothing", "not-found");
+      const st = await cache.prepare({ cfg: auto(), query: q("nothing"), holder: "p1", role: "current" });
+      await waitFor(() => cache.status(cache.get(st.key)!).state === "failed");
+      expect(cache.status(cache.get(st.key)!).error).toMatch(/No recording/);
+    });
   });
 
   it("reports failure when nothing matches, and retries later", async () => {

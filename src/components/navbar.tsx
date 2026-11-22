@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
-import { Bookmark, Clapperboard, Home, LogOut, Music2, Search, Settings2, Tv, Users, X } from "lucide-react";
+import { Bookmark, Clapperboard, Home, LayoutGrid, LogOut, Search, Settings2, Tv, Users, X } from "lucide-react";
 import { Avatar, Logo } from "./brand";
 import { api } from "./ui";
 import { isTvMode, setTvMode } from "./spatial-nav";
@@ -12,7 +12,6 @@ const LINKS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/browse/tv", label: "TV Shows", icon: Tv },
   { href: "/browse/movies", label: "Movies", icon: Clapperboard },
-  { href: "/music", label: "Music", icon: Music2 },
   { href: "/my-list", label: "My List", icon: Bookmark },
 ];
 
@@ -75,6 +74,7 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
               <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
               <div className="glass absolute right-0 z-50 mt-3 w-56 overflow-hidden rounded-xl border border-white/10 py-1.5 text-sm shadow-2xl">
                 <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3"><Avatar avatar={profile.avatar} size={32} /><span className="truncate font-semibold">{profile.name}</span></div>
+                <Link href="/apps" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><LayoutGrid className="size-4" /> Switch app</Link>
                 <Link href="/profiles" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Users className="size-4" /> Switch profile</Link>
                 <Link href="/profiles?manage=1" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Settings2 className="size-4" /> Manage profiles</Link>
                 {isAdmin && <Link href="/admin" className="flex items-center gap-3 px-4 py-2.5 text-violet-300 hover:bg-white/10"><Settings2 className="size-4" /> Admin dashboard</Link>}
@@ -95,7 +95,7 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
 export function MobileTabs() {
   const path = usePathname();
   return (
-    <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 pb-[env(safe-area-inset-bottom)] md:hidden">
+    <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/10 pb-[env(safe-area-inset-bottom)] md:hidden">
       {LINKS.map((l) => {
         const on = l.href === "/" ? path === "/" : path.startsWith(l.href);
         return (

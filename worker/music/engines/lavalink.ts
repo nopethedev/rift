@@ -23,6 +23,7 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
   const usable = (cfg: MusicConfig) => {
     pool.sync(cfg.lavalink.nodes);
     const nodes = pool.ordered();
+    if (!getSink()) throw new EngineError("The Lavalink audio bridge (voice sink) is not running on the worker", "unavailable");
     if (!nodes.length) throw new EngineError("No Lavalink nodes are configured", "unavailable");
     return nodes;
   };
@@ -32,7 +33,7 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
     let lastErr: Error | undefined;
     for (const n of usable(cfg)) {
       try {
-        await n.waitReady(6000);
+        await n.waitReady(4000);
         // A pasted direct link is loaded as-is (Lavalink's "http" source); anything else goes through the node's search prefix.
         const found = /^https?:\/\//i.test(text) ? await n.load(text).then((r) => (r.loadType === "track" ? [r.data as LavalinkTrack] : r.loadType === "playlist" ? (r.data as { tracks: LavalinkTrack[] }).tracks : [])) : await n.search(n.cfg.searchPrefix || "scsearch", text);
         const tracks = found.filter((t) => !t.info.isStream);

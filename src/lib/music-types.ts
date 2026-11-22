@@ -30,3 +30,38 @@ export const fmtTime = (s: number | null | undefined) => {
   const m = Math.floor(s / 60), sec = Math.floor(s % 60);
   return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
 };
+
+/** Remote artwork goes through our own cache/proxy (no third-party requests from the browser); local paths pass through. */
+export const artSrc = (u: string | null | undefined): string | null => (!u ? null : /^https?:\/\//i.test(u) ? `/api/music/art?u=${encodeURIComponent(u)}` : u);
+
+// ---- online catalogue (Deezer): metadata only, never audio ----
+export interface CatTrack { id: string; title: string; artist: string; artistId: string | null; album: string | null; albumId: string | null; durationSec: number; artworkUrl: string | null; explicit?: boolean }
+export interface CatAlbum { id: string; title: string; artist: string; artistId: string | null; artworkUrl: string | null; year: number | null; kind: "album" | "single" | "ep" | "compilation" | null; tracks: number | null }
+export interface CatArtist { id: string; name: string; pictureUrl: string | null; fans: number | null }
+export interface Shelf {
+  id: string; title: string; subtitle?: string; href?: string;
+  tracks?: CatTrack[]; albums?: CatAlbum[]; artists?: CatArtist[];
+}
+export interface Feed { enabled: boolean; shelves: Shelf[]; genres: { id: string; name: string; pictureUrl: string | null }[]; error?: string }
+export interface ArtistProfile {
+  artist: CatArtist & { albums: number | null };
+  bio: { text: string; url: string | null } | null;
+  topTracks: CatTrack[];
+  albums: CatAlbum[];
+  related: CatArtist[];
+}
+export const catInput = (t: CatTrack): ItemInput => ({ title: t.title, artist: t.artist, album: t.album, durationSec: t.durationSec, artworkUrl: t.artworkUrl });
+export const fmtCount = (n: number | null | undefined) => (n == null ? "" : n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K` : String(n));
+
+/** One key per song per profile (client and server agree): the normalised "artist|title". */
+export const songKey = (artist: string, title: string) => {
+  const n = (s: string) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/&/g, " and ").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  return `${n(artist)}|${n(title)}`;
+};
+export interface SavedDTO {
+  id: string; key: string; title: string; artist: string; album: string | null; durationSec: number | null; artworkUrl: string | null; trackId: string | null;
+  /** local = plays a library file; ondemand = pinned source; unmatched = will be searched when played */
+  match: "local" | "ondemand" | "unmatched"; createdAt: string; track: TrackDTO | null;
+}
+/** Result of the manual match picker: a library track or a (server-signed) on-demand result. */
+export type MatchPick = { trackId: string } | { candidate: Candidate };

@@ -69,3 +69,11 @@ describe("moveItem", () => {
     expect(moveItem(["a"], "zzz", 0)).toEqual(["a"]);
   });
 });
+
+import { songKey } from "./music-types";
+describe("songKey", () => {
+  it("is case, accent and punctuation insensitive and matches artist|title", () => {
+    expect(songKey("Beyoncé", "Halo!")).toBe(songKey("BEYONCE", "halo"));
+    expect(songKey("Simon & Garfunkel", "The Boxer")).toBe("simon and garfunkel|the boxer");
+  });
+});

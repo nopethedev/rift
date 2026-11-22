@@ -1,12 +1,6 @@
-import { MusicTabs } from "./tabs";
-
 export const metadata = { title: "Music" };
 
+/** The Music chrome (sidebar, top bar) comes from AppChrome; pages only add content. */
 export default function MusicLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-4 pt-24 sm:px-12">
-      <MusicTabs />
-      {children}
-    </div>
-  );
+  return <>{children}</>;
 }

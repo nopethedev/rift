@@ -55,6 +55,7 @@ model Profile {
   musicQueue     MusicQueueItem[]
   musicState     MusicQueueState?
   musicPlays     MusicPlay[]
+  musicSaved     MusicSaved[]
 
   @@index([userId])
 }
@@ -266,6 +267,7 @@ model MusicTrack {
   trackNo     Int?
   discNo      Int?
   coverHash   String? // file name (sha1) of the extracted cover in <data>/music/covers
+  artTriedAt  DateTime? // last online album-art lookup for a track without a cover (so scans do not repeat it)
   source      String   @default("import") // upload | import
   status      String   @default("ready") // ready | missing
   createdAt   DateTime @default(now())
@@ -366,4 +368,24 @@ model MusicPlay {
   profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@index([profileId, playedAt])
+}
+
+// "Liked songs" / library saves: a song the profile keeps, whether or not it is a file in the library. Saved external
+// songs stay on-demand references (audio is never stored permanently); `trackId` / `candidate` is the user's own match.
+model MusicSaved {
+  id          String   @id @default(cuid())
+  profileId   String
+  extKey      String // normalised "artist|title": one save per song per profile
+  trackId     String? // local library match (chosen by the user, or found automatically)
+  title       String
+  artist      String
+  album       String?
+  durationSec Float?
+  artworkUrl  String?
+  candidate   String? // JSON: server-signed on-demand result the user picked
+  createdAt   DateTime @default(now())
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, extKey])
+  @@index([profileId, createdAt])
 }

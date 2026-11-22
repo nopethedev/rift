@@ -39,6 +39,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
     key: it.id, title: it.title, artist: it.artist, album: it.album, durationSec: it.durationSec, cover: it.artworkUrl ?? it.track?.coverUrl ?? null, trackId: it.trackId ?? undefined,
     input: it.trackId ? { trackId: it.trackId } : { title: it.title, artist: it.artist, album: it.album, durationSec: it.durationSec, artworkUrl: it.artworkUrl },
     unavailable: it.availability === "unavailable" ? (it.availabilityNote ?? "Unavailable") : undefined,
+    onMatch: async (pick) => { await api(`/api/music/playlists/${id}/items`, { method: "PATCH", body: { itemId: it.id, match: pick } }); reload(); },
   });
   const badge = (it: Item) => it.availability === "local" ? <span title="In your library" className="hidden text-emerald-300 sm:block"><HardDrive className="size-3.5" /></span>
     : it.availability === "ondemand" ? <span title="Found on an authorised on-demand source" className="hidden text-violet-300 sm:block"><CloudDownload className="size-3.5" /></span>

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { Film, KeyRound, Sparkles } from "lucide-react";
 import { requireProfile } from "@/server/auth";
+import { requireAppChoice } from "@/server/app-choice";
 import { db } from "@/server/db";
 import { tasteRows } from "@/server/taste";
 import { parseFavoriteGenres, sinceParam } from "@/lib/taste";
@@ -71,6 +72,7 @@ const GENRE_ROWS = [
 
 export default async function HomePage() {
   const { profile } = await requireProfile();
+  await requireAppChoice();
   const configured = await tmdbConfigured();
   const local = recentlyAdded(24);
   const cont = continueWatching(profile.id);

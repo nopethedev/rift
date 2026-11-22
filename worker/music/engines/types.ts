@@ -26,3 +26,11 @@ export interface Engine {
   /** Start retrieving audio. Enforces the licence / source policy. */
   open(c: Candidate, cfg: MusicConfig): Promise<AudioSource>;
 }
+
+/** The engines to try for a request, in order. "auto" = Lavalink (only when a node is configured), then yt-dlp. */
+export function engineChain(cfg: MusicConfig, engines: Record<string, Engine>): Engine[] {
+  const ids = cfg.engine === "auto" ? (cfg.lavalink.nodes.length ? ["lavalink", "ytdlp"] : ["ytdlp"]) : [cfg.engine];
+  const list = ids.map((id) => engines[id]).filter((e): e is Engine => !!e);
+  if (!list.length) throw new EngineError(`Unknown engine ${cfg.engine}`, "unavailable");
+  return list;
+}

@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../ui";
-import type { EntryStatus, ItemInput, MusicMode, PlayInfo, Queue, QueueItem, RepeatMode } from "@/lib/music-types";
+import { artSrc, type EntryStatus, type ItemInput, MusicMode, PlayInfo, Queue, QueueItem, RepeatMode } from "@/lib/music-types";
 
 interface PlayerCtx {
   queue: Queue | null;
@@ -289,7 +289,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
     const ms = navigator.mediaSession;
-    if (current) ms.metadata = new MediaMetadata({ title: current.title, artist: current.artist, album: current.album ?? "", artwork: current.artworkUrl ? [{ src: current.artworkUrl, sizes: "512x512", type: "image/jpeg" }] : [] });
+    if (current) ms.metadata = new MediaMetadata({ title: current.title, artist: current.artist, album: current.album ?? "", artwork: current.artworkUrl ? [{ src: artSrc(current.artworkUrl) ?? "", sizes: "512x512", type: "image/jpeg" }] : [] });
     const set = (a: MediaSessionAction, f: MediaSessionActionHandler) => { try { ms.setActionHandler(a, f); } catch { /* unsupported */ } };
     set("play", () => latest.current.toggle());
     set("pause", () => latest.current.toggle());
