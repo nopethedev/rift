@@ -9,6 +9,7 @@ import { musicMode, toWorkerConfig } from "./config";
 import { fetchSpotify, SpotifyError, type ImportedPlaylist } from "./spotify";
 import type { ItemInput } from "./queue";
 import { musicWorker } from "./worker";
+import { seal, unseal } from "./seal";
 
 export type Availability = "local" | "ondemand" | "unavailable";
 export interface PlaylistItemDTO {
@@ -73,7 +74,7 @@ export async function addToPlaylist(profileId: string, id: string, inputs: ItemI
       const t = tracks.get(i.trackId);
       if (t) await db.musicPlaylistItem.create({ data: { playlistId: id, position: pos++, trackId: t.id, title: t.title, artist: t.artist, album: t.album, durationSec: t.durationSec, availability: "local" } });
     } else {
-      await db.musicPlaylistItem.create({ data: { playlistId: id, position: pos++, title: i.title, artist: i.artist, album: i.album ?? null, durationSec: i.durationSec ?? null, artworkUrl: i.artworkUrl ?? null, candidate: i.candidate ? JSON.stringify(i.candidate) : null, availability: i.candidate ? "ondemand" : null } });
+      await db.musicPlaylistItem.create({ data: { playlistId: id, position: pos++, title: i.title, artist: i.artist, album: i.album ?? null, durationSec: i.durationSec ?? null, artworkUrl: i.artworkUrl ?? null, candidate: unseal(i.candidate) ? JSON.stringify(unseal(i.candidate)) : null, availability: unseal(i.candidate) ? "ondemand" : null } });
     }
   }
   await db.musicPlaylist.update({ where: { id }, data: { updatedAt: new Date() } });
@@ -169,7 +170,7 @@ export function startCheck(profileId: string, user: { role: "ADMIN" | "USER" }, 
               if (candidate) availability = "ondemand"; else note = "No authorised source has this track.";
             }
           } catch (e) { note = (e as Error).message.slice(0, 300); }
-          await db.musicPlaylistItem.update({ where: { id: it.id }, data: { availability, availabilityNote: note, candidate: candidate ? JSON.stringify(candidate) : null, trackId, checkedAt: new Date() } }).catch(() => {});
+          await db.musicPlaylistItem.update({ where: { id: it.id }, data: { availability, availabilityNote: note, candidate: candidate ? JSON.stringify(seal(candidate)) : null, trackId, checkedAt: new Date() } }).catch(() => {});
           st.done++;
         }
       };

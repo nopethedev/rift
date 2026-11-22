@@ -42,7 +42,7 @@ const cfgSchema = z.object({
   lavalink: z.object({ nodes: z.array(node).max(20), allowedSources: z.array(z.string().max(40)).max(30) }),
 });
 const query = z.object({ title: z.string().min(1).max(300), artist: z.string().max(300), album: z.string().max(300).optional(), durationSec: z.number().min(0).max(36000).optional(), allowVariants: z.boolean().optional() });
-const candidate = z.object({ engine: z.enum(["ytdlp", "lavalink"]), sourceId: z.string().max(500), title: z.string().max(500), artist: z.string().max(300), durationSec: z.number(), url: z.string().max(2000), score: z.number(), license: z.string().optional(), artworkUrl: z.string().optional(), encoded: z.string().optional(), nodeId: z.string().optional(), sourceName: z.string().optional() });
+const candidate = z.object({ engine: z.enum(["ytdlp", "lavalink"]), sourceId: z.string().max(500), title: z.string().max(500), artist: z.string().max(300), durationSec: z.number(), url: z.string().max(2000), score: z.number(), license: z.string().nullish().transform((v) => v ?? undefined), artworkUrl: z.string().nullish().transform((v) => v ?? undefined), encoded: z.string().nullish().transform((v) => v ?? undefined), nodeId: z.string().nullish().transform((v) => v ?? undefined), sourceName: z.string().nullish().transform((v) => v ?? undefined) });
 const prepareSchema = z.object({ cfg: cfgSchema, query: query.optional(), candidate: candidate.optional(), holder: z.string().min(1).max(100), role: z.enum(["current", "preload"]), ttlSec: z.number().min(5).max(3600).optional() });
 const releaseSchema = z.object({ holder: z.string().min(1).max(100), role: z.enum(["current", "preload"]).optional(), keep: z.array(z.string()).max(50).optional(), key: z.string().max(64).optional() });
 

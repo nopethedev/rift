@@ -82,7 +82,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   const caps = useCallback(() => {
     const a = document.createElement("audio");
-    return { opus: !!a.canPlayType('audio/ogg; codecs="opus"'), flac: !!a.canPlayType("audio/flac") };
+    const can = (t: string) => !!a.canPlayType(t);
+    return { opus: can('audio/ogg; codecs="opus"'), flac: can("audio/flac"), aac: can('audio/mp4; codecs="mp4a.40.2"') || can("audio/aac"), mp3: can("audio/mpeg"), vorbis: can('audio/ogg; codecs="vorbis"') };
   }, []);
 
   const report = useCallback((completed: boolean) => {
@@ -106,7 +107,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     void a.play().then(() => setPlaying(true)).catch((e: Error) => { if (e.name !== "AbortError") setPlaying(false); });
   }, []);
 
-  const start = useCallback(async (body: { itemId?: string; dir?: "next" | "prev"; auto?: boolean }, at = 0) => {
+  const start = useCallback(async (body: { itemId?: string; dir?: "next" | "prev"; auto?: boolean; forceTranscode?: boolean }, at = 0) => {
     setLoading(true);
     setError("");
     try {
@@ -114,7 +115,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       setQueue(r.queue);
       if (r.ended || !r.play) { setPlay(null); setPlaying(false); setCapture(null); audio.current?.pause(); return; }
       reported.current = null;
-      retried.current = null;
+      if (!retried.current?.startsWith(r.play.item.id)) retried.current = null; // new item: allow its own retry
       setPlay(r.play);
       setCapture(r.play.status ?? null);
       attach(r.play, at);
@@ -148,6 +149,12 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const onError = () => {
     const p = playRef.current;
     if (!p) return;
+    // A library file the browser can't decode (MEDIA_ERR_SRC_NOT_SUPPORTED): have the server convert it.
+    if (p.kind === "local" && !p.transcode && audio.current?.error?.code === 4 && retried.current !== `${p.item.id}:t`) {
+      retried.current = `${p.item.id}:t`;
+      void start({ itemId: p.item.id, forceTranscode: true }, offset.current + (audio.current?.currentTime ?? 0));
+      return;
+    }
     // One automatic retry (re-prepares on-demand audio that was cleaned up or whose capture dropped), then skip on.
     if (retried.current !== p.item.id) {
       retried.current = p.item.id;

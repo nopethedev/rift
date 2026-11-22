@@ -10,7 +10,8 @@ Self-hosted, Netflix-style streaming platform. Your media, your server, your rul
 - **TMDB** discovery, trailers, hover previews (700 ms, muted YouTube trailer), local vs. discover-only badges
 - **Player**: direct play → **Mediabunny** in-browser remux/transcode (Dolby Digital / Digital Plus → AAC or Opus) → **FFmpeg HLS** worker for unsupported video
 - **WebTorrent** download manager, torrent search (`torrent-search-api`, Torznab, Internet Archive), automatic library import & TMDB matching
-- **Admin** (`/admin`): overview, media, add-media wizard, downloads, active streams, users, storage, settings
+- **Rift Music** (`/music`): your own library (MP3, FLAC, AAC, OGG, WAV, Opus) plus optional on-demand streaming (yt-dlp or Lavalink), smart queue, Spotify playlist import
+- **Admin** (`/admin`): overview, media, add-media wizard, downloads, active streams, users, storage, settings, music
 
 ## Quick start (development)
 
@@ -142,6 +143,49 @@ Playback uses direct play or in-browser Mediabunny (so DD+ still works); video t
 **Audio:** Dolby Digital / Digital Plus (DD+ 5.1 etc.) is decoded in the browser with Mediabunny and re-encoded to **AAC** in real time (seeking works; the encoder restarts at the new position). Browsers without an AAC encoder (e.g. some Chromium builds, Linux) fall back to Opus.
 
 > Only download or upload content you own or are licensed to use. Nothing is ever downloaded automatically from TMDB discovery results.
+
+## Rift Music
+
+Open **Music** in the top bar (or the bottom tabs on a phone). It has a persistent player (it keeps playing while you browse), a per-profile queue that survives reloads, shuffle / repeat / autoplay, playlists, search and recommendations.
+
+### Where songs come from (Admin → Music → Settings)
+
+| Playback source | Behaviour |
+| --- | --- |
+| **Local library** | Only your uploaded / imported files. |
+| **On-demand** | Every song is fetched when needed from an external source (no library required). |
+| **Hybrid** | Library first; anything not in the library is fetched on demand. |
+
+**Local library.** Upload on *Admin → Music* (streamed straight to disk) or point Rift at folders (`/media/music` by default; rescanned every 10 minutes). MP3, FLAC, AAC/M4A, OGG, WAV and Opus are indexed with their tags, cover art (embedded or `cover.jpg`), artist, album, genre and year. Files play directly with HTTP Range (seeking). If the browser reports it can't decode a codec (or the file is WMA, ALAC, …) the worker converts it with FFmpeg on the fly; seeking in a converted stream restarts it at the new offset.
+
+**On-demand.** The web app never does the heavy work. It asks the worker (`worker/music/`), which finds a matching recording, pulls the audio, runs it through FFmpeg into a **temporary cache file that browsers can start playing while it is still being written**, and serves it back (full Range seeking once the file is complete):
+
+- **Matching** (`shared/music-match.ts`): scores title, artist and duration, prefers "Topic"/official uploads, and rejects remixes, covers, live recordings, karaoke, sped-up/slowed versions and non-music results unless you asked for one (the requested title says "(Live)", …).
+- **Preloading** the next *N* songs of the queue (default 2). When the queue changes (skip, remove, reorder, shuffle) preloads that are no longer needed are cancelled and their partial files deleted. One download slot is always kept free for the song being played, so preloads never delay it.
+- **No duplicate work**: concurrent listeners wanting the same recording share one download; resolving the same song twice is cached.
+- **Bounded cache** (`maxCacheMB`): least recently used unused audio is evicted first; if everything is in use new fetches fail with a clear message instead of filling the disk.
+- **Cleanup**: audio is deleted after nobody needs it (finished, skipped, listener left/crashed: holds expire without a heartbeat) plus a short grace period so "previous" is instant. Leftovers from a crashed worker are removed on start. Streamed tracks are **never** imported into the library.
+- **Failure recovery**: a failing source falls through to the next-best match; the player retries once, then skips (max 3 in a row) with the reason shown. Limits: concurrent listeners and concurrent downloads.
+- **Settings** (all under `/admin/music/settings`): playback source, engine, preloading on/off + count, cache directory, maximum cache size, automatic cleanup (+ grace), format (MP3 / AAC / Opus) and bitrate, concurrent listeners / downloads.
+
+> **Rights.** On-demand playback stays off until an administrator ticks *"I confirm I may download and stream audio from the sources enabled"*. With the default policy (**open-licensed only**) yt-dlp results are checked for a Creative Commons / public-domain licence and anything else is refused; choosing *attested* skips the check and makes you responsible. Rift never downloads Spotify audio or touches DRM. Candidate URLs are signed by the server, so a client can't point the server at arbitrary URLs, and pasting direct links is admin-only.
+
+### Engine A: yt-dlp
+Needs `yt-dlp` on the worker's `PATH` (the Docker image includes it; set `YTDLP_PATH` otherwise). Search providers: SoundCloud and/or YouTube. Source extractors change often, so keep the image / binary current (`pip install -U yt-dlp`).
+
+### Engine B: Lavalink
+Lavalink does **not** expose an audio stream: it only sends Opus to a Discord-style *voice connection*. Rift therefore ships an **audio bridge** (`worker/music/voice-sink.ts`): a minimal voice server (gateway v8 over TLS + UDP/RTP, `aead_aes256_gcm_rtpsize`) that Lavalink "joins" instead of Discord. The Opus packets it receives are re-wrapped as Ogg Opus, run through FFmpeg and cached exactly like yt-dlp audio.
+
+- Any number of nodes (Admin → Music → Settings → Lavalink): URL, password, search prefix, health/version test; searches fail over between online nodes. Allowed source types are configurable (Lavalink can't report licences, so only list sources you may stream).
+- Bundled node: `docker compose --profile lavalink up -d`, then set `LAVALINK_URL=http://lavalink:2333` (and `LAVALINK_PASSWORD`) in `.env`. Plugins are listed in the admin page and written to the node's `application.yml` (restart the container to apply).
+- **Limitations (by design of Lavalink):** playback is captured **in real time**, so a song is fully seekable only after its capture finished (seeking ahead of it waits for that); preloads occupy a download slot for the length of the song. Nodes must reach the worker (TCP 4443, UDP 4444; `SINK_PUBLIC_HOST` / `SINK_PUBLIC_IP`) and **trust its self-signed certificate** (compose handles this for the bundled node; remote nodes need the certificate in their Java trust store, or supply your own CA-signed certificate via `SINK_TLS_DIR`). Discord's DAVE end-to-end encryption is never negotiated (there is no Discord).
+- **What has been tested end to end:** against a real Lavalink 4.2.2 node (HTTP-source tracks), the bridge, FFmpeg, cache, API and a real Chromium (see below). Searching through Lavalink's YouTube/SoundCloud sources and the Docker `--profile lavalink` wiring were *not* run in the development environment (no internet / Docker daemon there).
+
+### Spotify playlists
+*Music → Playlists → Import from Spotify*: paste a public playlist or album link. Rift imports names, artists, artwork and order (metadata only), matches each track to your library, then checks the on-demand source for the rest and marks every entry **in library / on-demand / unavailable** (with the reason). *Sync* re-imports the link; *Check sources* re-runs the availability check. Without credentials Rift reads the first 100 tracks of public playlists from Spotify's embed page; with a client id/secret (Admin → Music) it imports whole playlists through the Web API. Private playlists are not supported. (The Spotify fetching code is unit-tested against recorded page/API shapes; it could not be run against Spotify from the development environment.)
+
+### Tests
+`npm test` runs the matcher, queue logic, candidate signing, Spotify mappers and the worker pipeline (real FFmpeg, a synthetic engine: live-tail streaming, Range, de-duplication, preload cancel, cleanup, limits, eviction). With `yt-dlp` installed and `LAVALINK_JAR=/path/Lavalink.jar` (+ Java) the same suite also runs real yt-dlp and a real Lavalink node end to end (`worker/music/e2e.test.ts`). `scripts/e2e-music/` drives the whole stack in headless Chromium.
 
 ## Layout
 

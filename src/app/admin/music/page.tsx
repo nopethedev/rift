@@ -10,7 +10,7 @@ import type { TrackDTO } from "@/lib/music-types";
 interface Status {
   library: { tracks: number; albums: number; artists: number; missing: number; bytes: number; durationSec: number };
   scan: { running: boolean; finishedAt: string | null; progress: { dir: string; seen: number; indexed: number; skipped: number; failed: number } | null; last: { seen: number; added: number; failed: number; missing: number; errors: string[] } | null };
-  worker: { ok: true; engine: string; cacheDir: string; cacheBytes: number; maxCacheBytes: number; entries: number; jobsRunning: number; jobsQueued: number; listeners: number; ytdlp: { available: boolean; version?: string }; lavalink: { nodes: { id: string; name: string; online: boolean; players?: number; version?: string; error?: string }[]; sinkReady: boolean; sinkEndpoint?: string } } | { ok: false; error: string };
+  worker: { ok: true; engine: string; cacheDir: string; cacheBytes: number; maxCacheBytes: number; entries: number; tracks: { key: string; title: string; artist: string; state: string; bytes: number; roles: string[]; sourceId?: string }[]; jobsRunning: number; jobsQueued: number; listeners: number; ytdlp: { available: boolean; version?: string }; lavalink: { nodes: { id: string; name: string; online: boolean; players?: number; version?: string; error?: string }[]; sinkReady: boolean; sinkEndpoint?: string } } | { ok: false; error: string };
 }
 const gb = (b: number) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
 
@@ -77,6 +77,7 @@ export default function AdminMusicPage() {
               {w.lavalink.nodes.length > 0 && <ul className="space-y-1 text-sm">{w.lavalink.nodes.map((n) => <li key={n.id} className="flex items-center justify-between gap-2"><span className="truncate">{n.name}</span><span className="flex items-center gap-2 text-xs text-muted">{n.version && `v${n.version}`}{n.online ? <Badge tone="green">online{n.players ? ` · ${n.players} playing` : ""}</Badge> : <Badge tone="red" className="max-w-52 truncate">{n.error ?? "offline"}</Badge>}</span></li>)}</ul>}
               <div><div className="mb-1 flex justify-between text-xs text-muted"><span>Cache {gb(w.cacheBytes)} / {gb(w.maxCacheBytes)}</span><span>{w.entries} tracks · {w.listeners} listening · {w.jobsRunning} fetching{w.jobsQueued ? ` · ${w.jobsQueued} queued` : ""}</span></div><ProgressBar value={w.maxCacheBytes ? w.cacheBytes / w.maxCacheBytes : 0} /></div>
               <p className="truncate text-xs text-muted">{w.cacheDir}</p>
+              {w.tracks.length > 0 && <ul className="space-y-1 text-xs">{w.tracks.map((t) => <li key={t.key} className="flex items-center justify-between gap-2"><span className="truncate">{t.title} <span className="text-muted">· {t.artist}</span></span><span className="flex shrink-0 items-center gap-1.5">{t.roles.map((r) => <Badge key={r} tone={r === "current" ? "green" : "accent"}>{r}</Badge>)}<Badge tone={t.state === "ready" ? "default" : t.state === "failed" ? "red" : "amber"}>{t.state}</Badge></span></li>)}</ul>}
               <Button variant="secondary" size="sm" onClick={clearCache}><Trash2 className="size-4" /> Clear unused cache</Button>
             </>
           )}

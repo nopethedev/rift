@@ -9,6 +9,7 @@ import { makeShuffleOrder, moveItem, nextId, playOrder, prevId, type RepeatMode 
 import { coverUrl } from "./catalog";
 import { musicMode, type MusicMode } from "./config";
 import { recommendLocal } from "./recommend";
+import { unseal } from "./seal";
 
 export interface QueueItemDTO {
   id: string; trackId: string | null; title: string; artist: string; album: string | null; durationSec: number | null; artworkUrl: string | null;
@@ -57,7 +58,7 @@ async function dataFor(inputs: ItemInput[], origin: string) {
       if (!t) continue;
       out.push({ trackId: t.id, title: t.title, artist: t.artist, album: t.album, durationSec: t.durationSec, artworkUrl: coverUrl(t.coverHash), candidate: null, origin });
     } else {
-      out.push({ trackId: null, title: i.title, artist: i.artist, album: i.album ?? null, durationSec: i.durationSec ?? null, artworkUrl: i.artworkUrl ?? null, candidate: i.candidate ? JSON.stringify(i.candidate) : null, origin });
+      out.push({ trackId: null, title: i.title, artist: i.artist, album: i.album ?? null, durationSec: i.durationSec ?? null, artworkUrl: i.artworkUrl ?? null, candidate: unseal(i.candidate) ? JSON.stringify(unseal(i.candidate)) : null, origin }); // forged candidates are dropped
     }
   }
   return out;

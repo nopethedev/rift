@@ -139,6 +139,32 @@ describe("MusicCache", () => {
     await cache.prepare({ cfg, query: q("x5"), holder: "p3", role: "preload" });
   });
 
+  it("never lets preloads take the last download slot: the current song starts immediately", async () => {
+    engine.realtime = true; // each capture takes as long as the song, like Lavalink
+    const cfg = cfgFor({ maxDownloads: 2 });
+    await cache.prepare({ cfg, query: q("pre1", 6), holder: "p1", role: "preload" });
+    await cache.prepare({ cfg, query: q("pre2", 6), holder: "p1", role: "preload" });
+    await waitFor(() => cache.stats().jobsRunning === 1);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(cache.stats().jobsRunning).toBe(1); // the second preload waits: a slot stays free
+    const t0 = Date.now();
+    const cur = await cache.prepare({ cfg, query: q("now", 6), holder: "p1", role: "current" });
+    await waitFor(() => cache.status(cache.get(cur.key)!).state === "downloading", 3000);
+    expect(Date.now() - t0).toBeLessThan(2500);
+    expect(cache.stats().jobsRunning).toBe(2);
+  });
+
+  it("with a single download slot a preload only starts when nothing else runs, and current goes first", async () => {
+    engine.realtime = true;
+    const cfg = cfgFor({ maxDownloads: 1 });
+    const a = await cache.prepare({ cfg, query: q("cur", 3), holder: "p1", role: "current" });
+    await cache.prepare({ cfg, query: q("nxt", 3), holder: "p1", role: "preload" });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(cache.stats().jobsRunning).toBe(1);
+    expect(cache.status(cache.get(a.key)!).state).toBe("downloading");
+    await waitFor(() => cache.stats().tracks.some((t) => t.title === "nxt" && t.state === "downloading"), 8000); // starts after "cur" finished
+  });
+
   it("falls back to the next candidate when the first source fails", async () => {
     const st = await cache.prepare({ cfg: cfgFor(), query: q("fallback"), holder: "p1", role: "current" });
     const done = await ready(st.key);
@@ -246,6 +272,12 @@ describe("worker HTTP: /music/audio", () => {
     const r = await fetch(`${base}/music/audio/${prep.key}`, { headers: H });
     expect(r.status).toBe(502);
     expect((await r.json()).error).toMatch(/No recording/);
+  });
+
+  it("accepts candidates whose optional fields are null (Lavalink sends artworkUrl: null)", async () => {
+    const c = { ...mk("nullish"), artworkUrl: null, license: null, encoded: null, nodeId: null, sourceName: null };
+    const r = await post("/music/prepare", { cfg: cfgFor(), candidate: c, holder: "p1", role: "current" });
+    expect(r.status).toBe(200);
   });
 
   it("maps the listener limit to 429 and validates input", async () => {

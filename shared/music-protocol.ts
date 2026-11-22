@@ -114,6 +114,8 @@ export interface MusicStats {
   jobsRunning: number;
   jobsQueued: number;
   listeners: number;
+  /** What the cache holds right now (for the admin page). */
+  tracks: { key: string; title: string; artist: string; state: EntryState; bytes: number; roles: HoldRole[]; sourceId?: string }[];
   ytdlp: { available: boolean; version?: string };
   lavalink: { nodes: { id: string; name: string; online: boolean; players?: number; version?: string; error?: string }[]; sinkReady: boolean; sinkEndpoint?: string };
 }

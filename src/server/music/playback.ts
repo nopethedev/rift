@@ -9,7 +9,7 @@ import { musicMode, toWorkerConfig } from "./config";
 import { ensureState, loadQueue, type QueueItemDTO } from "./queue";
 import { musicWorker } from "./worker";
 
-export interface Caps { opus?: boolean; flac?: boolean }
+export interface Caps { opus?: boolean; flac?: boolean; aac?: boolean; mp3?: boolean; vorbis?: boolean }
 
 export interface PlayInfo {
   item: QueueItemDTO;
@@ -24,17 +24,16 @@ export interface PlayInfo {
 }
 
 const DIRECT = new Set(["mp3", "aac", "vorbis", "flac", "opus", "pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "pcm_u8", "pcm_s16be", "pcm_s24be"]);
-export function needsTranscode(codec: string | null, caps: Caps = {}): boolean {
+export function needsTranscode(codec: string | null, caps: Caps = {}, force = false): boolean {
   const c = (codec ?? "").toLowerCase();
-  if (!DIRECT.has(c)) return true;
-  if (c === "opus" && caps.opus === false) return true;
-  if (c === "flac" && caps.flac === false) return true;
-  return false;
+  if (force || !DIRECT.has(c)) return true;
+  const supported = (caps as Record<string, boolean | undefined>)[c];
+  return supported === false; // the browser told us it can't decode this codec
 }
 
 type Ctx = { profileId: string; user: { role: "ADMIN" | "USER" } };
 
-export async function playItem(ctx: Ctx, itemId: string, caps: Caps = {}): Promise<PlayInfo> {
+export async function playItem(ctx: Ctx, itemId: string, caps: Caps = {}, forceTranscode = false): Promise<PlayInfo> {
   const row = await db.musicQueueItem.findFirst({ where: { id: itemId, profileId: ctx.profileId } });
   if (!row) throw new HttpError(404, "Queue item not found");
   const s = await getSettings();
@@ -52,7 +51,7 @@ export async function playItem(ctx: Ctx, itemId: string, caps: Caps = {}): Promi
   if (trackId) {
     const t = await db.musicTrack.findUnique({ where: { id: trackId } });
     if (t && t.status === "ready") {
-      const transcode = needsTranscode(t.codec, caps);
+      const transcode = needsTranscode(t.codec, caps, forceTranscode);
       await db.musicQueueState.update({ where: { profileId: ctx.profileId }, data: { currentItemId: itemId } });
       return { item: dto, kind: "local", url: `/api/music/tracks/${t.id}/audio${transcode ? "?transcode=1" : ""}`, transcode, durationSec: t.durationSec };
     }

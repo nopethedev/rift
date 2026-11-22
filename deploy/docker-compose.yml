@@ -21,8 +21,13 @@ services:
       TMDB_API_KEY: ${TMDB_API_KEY:-}
       OPENSUBTITLES_API_KEY: ${OPENSUBTITLES_API_KEY:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Rift Music: with `--profile lavalink` put LAVALINK_URL=http://lavalink:2333 (and LAVALINK_PASSWORD) in .env
+      LAVALINK_URL: ${LAVALINK_URL:-}
+      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:-youshallnotpass}
+      LAVALINK_CONFIG_DIR: /lavalink-config
     volumes:
       - rift-data:/app/data
+      - lavalink-config:/lavalink-config
       - ${MEDIA_PATH:-./media}:/media
     depends_on: [worker]
     labels: ["com.centurylinklabs.watchtower.enable=true"]
@@ -43,10 +48,17 @@ services:
       WORKER_TOKEN: ${WORKER_TOKEN:?run install.sh or set WORKER_TOKEN in .env}
       MAX_SESSIONS: ${MAX_SESSIONS:-2}
       TRANSCODE_DIR: /transcode
+      # Rift Music: on-demand cache + the Lavalink audio bridge (the bridge needs a name Lavalink can reach: the service name)
+      MUSIC_CACHE_DIR: /music-cache
+      SINK_PUBLIC_HOST: ${SINK_PUBLIC_HOST:-worker}
+      SINK_PUBLIC_IP: ${SINK_PUBLIC_IP:-}
+      SINK_TLS_DIR: /sink
     volumes:
       # Media must be mounted at the same path as in the web container.
       - ${MEDIA_PATH:-./media}:/media:ro
       - transcode:/transcode
+      - music-cache:/music-cache
+      - sink-tls:/sink
     labels: ["com.centurylinklabs.watchtower.enable=true"]
     # Hardware acceleration (uncomment what applies):
     # devices: ["/dev/dri:/dev/dri"]          # VAAPI / Intel QSV
@@ -76,7 +88,44 @@ services:
       WATCHTOWER_POLL_INTERVAL: "300"
       WATCHTOWER_CLEANUP: "true"
 
+  # ---- Rift Music: optional bundled Lavalink (docker compose --profile lavalink up -d) ----------------------------
+  # Lavalink only outputs audio to Discord-style voice connections, so the Rift worker runs an "audio bridge" that
+  # Lavalink connects to as a voice server. This one-shot job makes Lavalink's JVM trust the bridge's certificate.
+  lavalink-trust:
+    profiles: [lavalink]
+    image: ghcr.io/lavalink-devs/lavalink:4
+    user: root
+    restart: "no"
+    entrypoint: ["/bin/sh", "/lavalink-trust.sh"]
+    volumes:
+      - ./lavalink-trust.sh:/lavalink-trust.sh:ro
+      - sink-tls:/sink:ro
+      - lavalink-trust:/trust
+    depends_on: [worker]
+
+  lavalink:
+    profiles: [lavalink]
+    image: ghcr.io/lavalink-devs/lavalink:4
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 2333
+      LAVALINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD:-youshallnotpass}
+      # Plugins and the password are written by Admin → Music → Settings → "Save & write Lavalink config".
+      SPRING_CONFIG_ADDITIONAL_LOCATION: optional:file:/config/
+      JAVA_TOOL_OPTIONS: -Xmx${LAVALINK_HEAP:-1g} -Djavax.net.ssl.trustStore=/trust/trust.jks -Djavax.net.ssl.trustStorePassword=changeit
+    volumes:
+      - lavalink-config:/config:ro
+      - lavalink-trust:/trust:ro
+      - lavalink-plugins:/opt/Lavalink/plugins
+    depends_on:
+      lavalink-trust: { condition: service_completed_successfully }
+
 volumes:
   rift-data:
   transcode:
   caddy-data:
+  music-cache:
+  sink-tls:
+  lavalink-config:
+  lavalink-trust:
+  lavalink-plugins:

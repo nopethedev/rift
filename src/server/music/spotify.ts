@@ -10,6 +10,12 @@ export class SpotifyError extends Error {
   constructor(message: string, public status = 502) { super(message); }
 }
 
+/** fetch() with network failures / timeouts turned into a readable SpotifyError. */
+async function spfetch(url: string, init: RequestInit): Promise<Response> {
+  try { return await fetch(url, init); }
+  catch (e) { throw new SpotifyError(`Could not reach Spotify (${(e as Error).name === "TimeoutError" ? "timed out" : (e as Error).cause instanceof Error ? ((e as Error).cause as Error).message : (e as Error).message}). Check the server's internet access.`, 502); }
+}
+
 export function parseSpotifyUrl(input: string): { kind: "playlist" | "album"; id: string } | null {
   const s = input.trim();
   let m = /^spotify:(playlist|album):([A-Za-z0-9]{22})$/.exec(s);
@@ -34,7 +40,7 @@ export function mapApiTrack(t: ApiTrack | null | undefined): ImportedTrack | nul
 }
 
 async function apiToken(id: string, secret: string): Promise<string> {
-  const r = await fetch("https://accounts.spotify.com/api/token", {
+  const r = await spfetch("https://accounts.spotify.com/api/token", {
     method: "POST", headers: { Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`, "content-type": "application/x-www-form-urlencoded" },
     body: "grant_type=client_credentials", signal: AbortSignal.timeout(15_000),
   });
@@ -45,7 +51,7 @@ async function apiToken(id: string, secret: string): Promise<string> {
 async function viaApi(kind: "playlist" | "album", id: string, cid: string, secret: string): Promise<ImportedPlaylist> {
   const token = await apiToken(cid, secret);
   const get = async <T>(url: string): Promise<T> => {
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+    const r = await spfetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
     if (r.status === 404 || r.status === 403) throw new SpotifyError("Spotify says this playlist is private or not available to the app. Make it public, or use a public copy.", 404);
     if (!r.ok) throw new SpotifyError(`Spotify API error ${r.status}`);
     return (await r.json()) as T;
@@ -91,7 +97,7 @@ export function mapEmbed(html: string, kind: "playlist" | "album", id: string): 
 }
 
 async function viaEmbed(kind: "playlist" | "album", id: string): Promise<ImportedPlaylist> {
-  const r = await fetch(`https://open.spotify.com/embed/${kind}/${id}`, { headers: { "user-agent": "Mozilla/5.0 (compatible; Rift/1.0)", "accept-language": "en" }, signal: AbortSignal.timeout(20_000) });
+  const r = await spfetch(`https://open.spotify.com/embed/${kind}/${id}`, { headers: { "user-agent": "Mozilla/5.0 (compatible; Rift/1.0)", "accept-language": "en" }, signal: AbortSignal.timeout(20_000) });
   if (r.status === 404) throw new SpotifyError("Spotify could not find that playlist (or it is private).", 404);
   if (!r.ok) throw new SpotifyError(`Spotify returned ${r.status}`);
   return mapEmbed(await r.text(), kind, id);

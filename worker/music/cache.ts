@@ -215,7 +215,11 @@ export class MusicCache {
     for (const j of this.jobs.values()) bytes += j.bytes;
     const listeners = new Set<string>();
     for (const e of this.entries.values()) for (const h of e.liveHolders(now)) if (h.role === "current") listeners.add(h.holder);
-    return { cacheDir: this.dir, cacheBytes: bytes, maxCacheBytes: (this.cfg?.maxCacheMB ?? 0) * 1048576, entries: this.entries.size, jobsRunning: this.running.size, jobsQueued: this.queue.length, listeners: listeners.size };
+    const tracks = [...this.entries.values()].map((e) => {
+      const c = e.job?.candidate ?? e.candidates[0];
+      return { key: e.key, title: c?.title ?? e.query?.title ?? "?", artist: c?.artist ?? e.query?.artist ?? "", state: e.state, bytes: e.job?.bytes ?? 0, roles: [...new Set(e.liveHolders(now).map((h) => h.role))], sourceId: c?.sourceId };
+    });
+    return { cacheDir: this.dir, cacheBytes: bytes, maxCacheBytes: (this.cfg?.maxCacheMB ?? 0) * 1048576, entries: this.entries.size, jobsRunning: this.running.size, jobsQueued: this.queue.length, listeners: listeners.size, tracks };
   }
 
   /** Delete every unheld cached track now (admin action). */
@@ -311,14 +315,26 @@ export class MusicCache {
   }
 
   // ---------- scheduling ----------
+  /**
+   * Starts queued jobs by priority. Preloads may never take the last slot: one is always kept free for the song the
+   * listener is actually waiting for (with a single slot, a preload only starts when nothing else is running).
+   */
   private schedule() {
     const cfg = this.cfg;
     if (!cfg) return;
     const now = Date.now();
+    const max = Math.max(1, cfg.maxDownloads);
     this.queue = this.queue.filter((j) => j.state === "queued");
-    while (this.running.size < Math.max(1, cfg.maxDownloads) && this.queue.length) {
+    for (;;) {
+      if (this.running.size >= max || !this.queue.length) return;
       this.queue.sort((a, b) => b.priority(now) - a.priority(now) || a.startedAt - b.startedAt);
-      const j = this.queue.shift()!;
+      const lowRunning = [...this.running].filter((j) => j.priority(now) < 2).length;
+      const idx = this.queue.findIndex((j) => {
+        const p = j.priority(now);
+        return p === 0 || p === 2 || (max >= 2 ? lowRunning < max - 1 : this.running.size === 0);
+      });
+      if (idx < 0) return;
+      const j = this.queue.splice(idx, 1)[0];
       if (j.priority(now) === 0) { j.fail("cancelled"); this.dropJobSoon(j); continue; } // nobody wants it any more
       void this.runJob(j, cfg);
     }

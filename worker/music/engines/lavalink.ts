@@ -14,7 +14,7 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
     durationSec: t.info.length / 1000,
     url: t.info.uri ?? "",
     score: 0,
-    artworkUrl: t.info.artworkUrl,
+    artworkUrl: t.info.artworkUrl ?? undefined,
     encoded: t.encoded,
     nodeId: n.cfg.id,
     sourceName: t.info.sourceName,

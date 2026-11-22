@@ -22,7 +22,7 @@ mkdir -p "$DIR/media"
 cd "$DIR"
 say "Installing into $(pwd)"
 
-for f in docker-compose.yml Caddyfile update.sh; do
+for f in docker-compose.yml Caddyfile update.sh lavalink-trust.sh; do
   curl -fsSL "$RAW/$f" -o "$f" || die "Could not download $f from $RAW"
 done
 chmod +x update.sh

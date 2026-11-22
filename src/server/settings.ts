@@ -118,7 +118,7 @@ export const defaultSettings = (): Settings => ({
   musicLibraryDirs: [path.join(env.mediaDir, "music")],
   musicUploadDir: path.join(env.mediaDir, "music", "uploads"),
   musicLavalinkNodes: process.env.LAVALINK_URL ? [{ id: "bundled", name: "Bundled Lavalink", url: process.env.LAVALINK_URL, password: process.env.LAVALINK_PASSWORD || "youshallnotpass", searchPrefix: "scsearch" }] : [],
-  musicLavalinkAllowedSources: ["http", "soundcloud", "bandcamp"],
+  musicLavalinkAllowedSources: ["soundcloud", "bandcamp"],
   musicLavalinkPlugins: [],
   spotifyClientId: process.env.SPOTIFY_CLIENT_ID || "",
   spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || "",

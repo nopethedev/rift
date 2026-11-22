@@ -77,7 +77,7 @@ export const ytdlpEngine: Engine = {
     const flat = settled.flatMap((s) => (s.status === "fulfilled" ? s.value : []));
     if (!flat.length) {
       const err = settled.find((s): s is PromiseRejectedResult => s.status === "rejected");
-      throw err ? err.reason : new EngineError("No results", "not-found");
+      throw err ? err.reason : new EngineError(`No source returned any result for "${query.title}" by ${query.artist}`, "not-found");
     }
     const ranked = flat
       .map((c) => ({ ...c, score: scoreCandidate(query, { title: c.title, artist: c.artist, durationSec: c.durationSec, isLive: (c as unknown as { live?: boolean }).live }).score }))
