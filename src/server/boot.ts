@@ -15,6 +15,8 @@ export async function bootServices() {
     await getTorrentStreamer().init();
     const { startLibraryWatcher } = await import("./library/scanner");
     startLibraryWatcher();
+    const { startMusicWatcher } = await import("./music/library");
+    startMusicWatcher();
     console.log("[rift] background services started");
   } catch (e) {
     g.__riftBooted = false;

@@ -7,10 +7,13 @@ import { loadConfig, type WorkerConfig } from "./config";
 import { detectHwAccels, ffmpegVersion, hasToneMapping } from "./hwaccel";
 import { createServer } from "./server";
 import { SessionManager } from "./sessions";
+import { createMusic } from "./music";
+import type { MusicService } from "./music/routes";
 
 export interface RunningWorker {
   server: Server;
   sessions: SessionManager;
+  music: MusicService;
   port: number;
   hwaccels: string[];
   stop(): Promise<void>;
@@ -21,7 +24,8 @@ export async function startWorker(cfg: WorkerConfig = loadConfig()): Promise<Run
   const [version, hwaccels, toneMapping] = await Promise.all([ffmpegVersion(), detectHwAccels(cfg.vaapiDevice), hasToneMapping()]);
   const sessions = new SessionManager(cfg, { hwaccels, toneMapping });
   await sessions.init();
-  const server = createServer({ cfg, sessions, ffmpegVersion: version, hwaccels });
+  const music = await createMusic(cfg);
+  const server = createServer({ cfg, sessions, ffmpegVersion: version, hwaccels, music });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(cfg.port, cfg.host, () => resolve());
@@ -35,6 +39,7 @@ export async function startWorker(cfg: WorkerConfig = loadConfig()): Promise<Run
   return {
     server,
     sessions,
+    music,
     port,
     hwaccels,
     stop() {
@@ -42,6 +47,7 @@ export async function startWorker(cfg: WorkerConfig = loadConfig()): Promise<Run
         server.close();
         server.closeAllConnections();
         await sessions.shutdown();
+        await music.stop();
       })();
       return stopping;
     },

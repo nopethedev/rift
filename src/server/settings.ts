@@ -40,6 +40,36 @@ export interface Settings {
   onDemandAccess: "admins" | "everyone";
   /** ISO 639-1 codes searched / auto-fetched, in order of preference. */
   subtitleLanguages: string[];
+
+  // ----- Rift Music -----
+  /** Where tracks come from: the uploaded library, on-demand sources, or both (library first). */
+  musicSource: "local" | "ondemand" | "hybrid";
+  musicEngine: "ytdlp" | "lavalink";
+  musicPreload: boolean;
+  musicPreloadCount: number;
+  /** Temporary on-demand audio cache (on the worker's filesystem). Empty = the worker's default. */
+  musicCacheDir: string;
+  musicMaxCacheMB: number;
+  musicCacheCleanup: boolean;
+  musicCleanupGraceSec: number;
+  musicFormat: "mp3" | "aac" | "opus";
+  musicBitrate: number;
+  /** Listeners that may use on-demand audio at once (0 = unlimited) and simultaneous downloads. */
+  musicMaxStreams: number;
+  musicMaxDownloads: number;
+  musicOnDemandAccess: "admins" | "everyone";
+  /** The admin confirms the enabled sources permit downloading and streaming. Required for on-demand. */
+  musicRightsAttested: boolean;
+  /** licensed-only: yt-dlp results must carry an open (Creative Commons / public domain) licence. */
+  musicLicensePolicy: "licensed-only" | "attested";
+  musicSearchProviders: ("youtube" | "soundcloud")[];
+  musicLibraryDirs: string[];
+  musicUploadDir: string;
+  musicLavalinkNodes: { id: string; name: string; url: string; password: string; searchPrefix: string }[];
+  musicLavalinkAllowedSources: string[];
+  musicLavalinkPlugins: { dependency: string; repository: string }[];
+  spotifyClientId: string;
+  spotifyClientSecret: string;
 }
 
 export const defaultSettings = (): Settings => ({
@@ -69,6 +99,29 @@ export const defaultSettings = (): Settings => ({
   subtitleLanguages: ["en"],
   onDemandMaxStreams: Math.max(0, Number(process.env.STREAM_MAX_SESSIONS) || 3),
   onDemandAccess: "admins",
+  musicSource: "local",
+  musicEngine: "ytdlp",
+  musicPreload: true,
+  musicPreloadCount: 2,
+  musicCacheDir: process.env.MUSIC_CACHE_DIR || "",
+  musicMaxCacheMB: 2048,
+  musicCacheCleanup: true,
+  musicCleanupGraceSec: 30,
+  musicFormat: "mp3",
+  musicBitrate: 192,
+  musicMaxStreams: 4,
+  musicMaxDownloads: 2,
+  musicOnDemandAccess: "everyone",
+  musicRightsAttested: false,
+  musicLicensePolicy: "licensed-only",
+  musicSearchProviders: ["soundcloud", "youtube"],
+  musicLibraryDirs: [path.join(env.mediaDir, "music")],
+  musicUploadDir: path.join(env.mediaDir, "music", "uploads"),
+  musicLavalinkNodes: process.env.LAVALINK_URL ? [{ id: "bundled", name: "Bundled Lavalink", url: process.env.LAVALINK_URL, password: process.env.LAVALINK_PASSWORD || "youshallnotpass", searchPrefix: "scsearch" }] : [],
+  musicLavalinkAllowedSources: ["http", "soundcloud", "bandcamp"],
+  musicLavalinkPlugins: [],
+  spotifyClientId: process.env.SPOTIFY_CLIENT_ID || "",
+  spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || "",
 });
 
 let cache: { at: number; value: Settings } | null = null;
@@ -100,5 +153,5 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
 
 /** Redacted version safe to send to the browser. */
 export function publicSettings(s: Settings) {
-  return { ...s, tmdbApiKey: s.tmdbApiKey ? "••••" + s.tmdbApiKey.slice(-4) : "", torznabApiKey: s.torznabApiKey ? "••••" : "", opensubtitlesApiKey: s.opensubtitlesApiKey ? "••••" + s.opensubtitlesApiKey.slice(-4) : "", opensubtitlesPassword: s.opensubtitlesPassword ? "••••" : "" };
+  return { ...s, musicLavalinkNodes: s.musicLavalinkNodes.map((n) => ({ ...n, password: n.password ? "••••" : "" })), spotifyClientSecret: s.spotifyClientSecret ? "••••" : "", tmdbApiKey: s.tmdbApiKey ? "••••" + s.tmdbApiKey.slice(-4) : "", torznabApiKey: s.torznabApiKey ? "••••" : "", opensubtitlesApiKey: s.opensubtitlesApiKey ? "••••" + s.opensubtitlesApiKey.slice(-4) : "", opensubtitlesPassword: s.opensubtitlesPassword ? "••••" : "" };
 }

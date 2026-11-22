@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { Activity, ArrowLeft, Download, Film, HardDrive, LayoutDashboard, PlusCircle, Settings, Users } from "lucide-react";
+import { Activity, ArrowLeft, Download, Film, HardDrive, LayoutDashboard, Music2, PlusCircle, Settings, SlidersHorizontal, Users } from "lucide-react";
 import { Logo } from "@/components/brand";
 
 const ITEMS = [
@@ -10,6 +10,8 @@ const ITEMS = [
   { href: "/admin/media", label: "Media", icon: Film },
   { href: "/admin/media/new", label: "Add media", icon: PlusCircle, exact: true },
   { href: "/admin/downloads", label: "Downloads", icon: Download },
+  { href: "/admin/music", label: "Music", icon: Music2, exact: true },
+  { href: "/admin/music/settings", label: "Music settings", icon: SlidersHorizontal },
   { href: "/admin/streams", label: "Active streams", icon: Activity },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/storage", label: "Storage", icon: HardDrive },

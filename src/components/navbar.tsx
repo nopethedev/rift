@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
-import { Bookmark, Clapperboard, Home, LogOut, Search, Settings2, Tv, Users, X } from "lucide-react";
+import { Bookmark, Clapperboard, Home, LogOut, Music2, Search, Settings2, Tv, Users, X } from "lucide-react";
 import { Avatar, Logo } from "./brand";
 import { api } from "./ui";
 import { isTvMode, setTvMode } from "./spatial-nav";
@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/browse/tv", label: "TV Shows", icon: Tv },
   { href: "/browse/movies", label: "Movies", icon: Clapperboard },
+  { href: "/music", label: "Music", icon: Music2 },
   { href: "/my-list", label: "My List", icon: Bookmark },
 ];
 
@@ -94,7 +95,7 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
 export function MobileTabs() {
   const path = usePathname();
   return (
-    <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/10 pb-[env(safe-area-inset-bottom)] md:hidden">
+    <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 pb-[env(safe-area-inset-bottom)] md:hidden">
       {LINKS.map((l) => {
         const on = l.href === "/" ? path === "/" : path.startsWith(l.href);
         return (

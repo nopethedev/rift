@@ -51,6 +51,10 @@ model Profile {
   progress  WatchProgress[]
   watchlist WatchlistItem[]
   streams   StreamSession[]
+  musicPlaylists MusicPlaylist[]
+  musicQueue     MusicQueueItem[]
+  musicState     MusicQueueState?
+  musicPlays     MusicPlay[]
 
   @@index([userId])
 }
@@ -234,4 +238,132 @@ model StreamSession {
   mediaFile   MediaFile @relation(fields: [mediaFileId], references: [id], onDelete: Cascade)
 
   @@index([lastPingAt])
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Rift Music
+// ---------------------------------------------------------------------------------------------------------------
+
+// A file in the local music library (uploaded or imported from a library folder).
+model MusicTrack {
+  id          String   @id @default(cuid())
+  path        String   @unique // absolute path
+  size        BigInt   @default(0)
+  mtimeMs     BigInt   @default(0) // lets rescans skip unchanged files
+  container   String?
+  codec       String?
+  bitrate     Int?
+  sampleRate  Int?
+  channels    Int?
+  durationSec Float    @default(0)
+  title       String
+  artist      String   @default("Unknown artist")
+  albumArtist String?
+  album       String?
+  albumKey    String // groups tracks of one album
+  genre       String?
+  year        Int?
+  trackNo     Int?
+  discNo      Int?
+  coverHash   String? // file name (sha1) of the extracted cover in <data>/music/covers
+  source      String   @default("import") // upload | import
+  status      String   @default("ready") // ready | missing
+  createdAt   DateTime @default(now())
+  playlistItems MusicPlaylistItem[]
+
+  @@index([artist])
+  @@index([albumKey])
+  @@index([genre])
+  @@index([status, createdAt])
+}
+
+model MusicPlaylist {
+  id           String   @id @default(cuid())
+  profileId    String
+  name         String
+  description  String?
+  source       String   @default("manual") // manual | spotify
+  sourceUrl    String?
+  sourceId     String? // e.g. Spotify playlist id
+  artworkUrl   String?
+  lastSyncedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  items        MusicPlaylistItem[]
+
+  @@index([profileId, updatedAt])
+}
+
+// One entry of a playlist. Imported entries keep their title/artist so they can be matched (again) to the library or
+// found on an on-demand source later; `trackId` is the local match when there is one.
+model MusicPlaylistItem {
+  id          String        @id @default(cuid())
+  playlistId  String
+  position    Int
+  trackId     String?
+  title       String
+  artist      String
+  album       String?
+  durationSec Float?
+  artworkUrl  String?
+  externalId  String? // Spotify track id
+  isrc        String?
+  // local | ondemand | unavailable | null (not checked yet), with a human reason for "unavailable"
+  availability     String?
+  availabilityNote String?
+  candidate        String? // JSON: on-demand search result that matched (pinned for playback)
+  checkedAt        DateTime?
+  playlist    MusicPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track       MusicTrack?   @relation(fields: [trackId], references: [id], onDelete: SetNull)
+
+  @@index([playlistId, position])
+}
+
+// The persistent play queue of a profile.
+model MusicQueueItem {
+  id          String  @id @default(cuid())
+  profileId   String
+  position    Int
+  trackId     String? // local track
+  title       String
+  artist      String
+  album       String?
+  durationSec Float?
+  artworkUrl  String?
+  candidate   String? // JSON: pinned on-demand search result chosen by the user
+  origin      String  @default("manual") // manual | playlist | autoplay | radio
+  profile     Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, position])
+}
+
+model MusicQueueState {
+  profileId     String   @id
+  currentItemId String?
+  shuffle       Boolean  @default(false)
+  repeat        String   @default("off") // off | all | one
+  autoplay      Boolean  @default(true)
+  positionSec   Float    @default(0)
+  shuffleOrder  String? // JSON string[] of queue item ids in shuffled play order
+  updatedAt     DateTime @default(now()) @updatedAt
+  profile       Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model MusicPlay {
+  id          String   @id @default(cuid())
+  profileId   String
+  trackId     String?
+  title       String
+  artist      String
+  album       String?
+  genre       String?
+  durationSec Float?
+  playedSec   Float    @default(0)
+  completed   Boolean  @default(false)
+  source      String   @default("local") // local | ondemand
+  playedAt    DateTime @default(now())
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, playedAt])
 }

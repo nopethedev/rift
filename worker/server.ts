@@ -6,15 +6,17 @@ import { timingSafeEqual, createHash } from "node:crypto";
 import type { WorkerHealth } from "../shared/worker-protocol";
 import type { WorkerConfig } from "./config";
 import { HttpError, SESSION_ID_RE, validateStartRequest, type SessionManager } from "./sessions";
+import { handleMusic, type MusicService } from "./music/routes";
 
 export interface ServerDeps {
   cfg: WorkerConfig;
   sessions: SessionManager;
   ffmpegVersion: string;
   hwaccels: string[];
+  music?: MusicService;
 }
 
-const MAX_BODY = 64 * 1024;
+const MAX_BODY = 256 * 1024;
 const PLAYLIST_TYPE = "application/vnd.apple.mpegurl";
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown) {
@@ -127,6 +129,11 @@ export function createServer(deps: ServerDeps): http.Server {
     if (!authorized(req, cfg.token)) {
       res.setHeader("WWW-Authenticate", "Bearer");
       throw new HttpError(401, "unauthorized");
+    }
+
+    if (parts[0] === "music") {
+      if (!deps.music) throw new HttpError(503, "music module is not running");
+      return handleMusic(deps.music, req, res, parts, { readJson, sendJson });
     }
 
     // /sessions
