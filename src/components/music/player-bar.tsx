@@ -73,7 +73,7 @@ export function PlayerBar() {
   return (
     <>
       <div className="glass fixed inset-x-0 bottom-[calc(3.8rem+env(safe-area-inset-bottom))] z-30 border-t border-white/10 md:bottom-0" data-testid="music-bar">
-        <div className="mx-auto grid max-w-[1800px] grid-cols-[1fr_auto] items-center gap-2 px-3 py-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] md:px-6">
+        <div className="mx-auto grid max-w-[1800px] grid-cols-[1fr_auto] items-center gap-2 py-2 pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] md:pl-6 md:pr-6">
           <button onClick={() => setOpen(true)} className="flex min-w-0 items-center gap-3 text-left" aria-label="Open now playing">
             <Cover src={current.artworkUrl} className="size-11 md:size-12" />
             <span className="min-w-0"><span className="block truncate text-sm font-semibold">{current.title}</span><span className="block truncate text-xs text-muted">{current.artist}</span><StatusLine className="md:hidden" /></span>

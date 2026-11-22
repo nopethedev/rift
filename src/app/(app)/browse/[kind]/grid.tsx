@@ -50,9 +50,9 @@ export function BrowseGrid({ type, genres }: { type: "movie" | "tv"; genres: { i
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center gap-2">
-        <button onClick={() => setGenre(null)} className={clsx("rounded-full px-4 py-1.5 text-sm transition", genre === null ? "bg-accent text-white" : "bg-white/10 hover:bg-white/20")}>All</button>
+        <button onClick={() => setGenre(null)} className={clsx("rounded-full px-4 py-2.5 text-sm transition pointer-fine:py-1.5", genre === null ? "bg-accent text-white" : "bg-white/10 hover:bg-white/20")}>All</button>
         {genres.map((g) => (
-          <button key={g.id} onClick={() => setGenre(g.id)} className={clsx("rounded-full px-4 py-1.5 text-sm transition", genre === g.id ? "bg-accent text-white" : "bg-white/10 hover:bg-white/20")}>{g.name}</button>
+          <button key={g.id} onClick={() => setGenre(g.id)} className={clsx("rounded-full px-4 py-2.5 text-sm transition pointer-fine:py-1.5", genre === g.id ? "bg-accent text-white" : "bg-white/10 hover:bg-white/20")}>{g.name}</button>
         ))}
         <div className="ml-auto w-44">
           <Select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value)}>

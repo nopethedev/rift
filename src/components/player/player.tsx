@@ -54,10 +54,15 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
   const [muted, setMuted] = useState(false);
   const [full, setFull] = useState(false);
   const [controls, setControls] = useState(true);
+  const controlsRef = useRef(true);
+  useEffect(() => { controlsRef.current = controls; }, [controls]);
   const [menu, setMenu] = useState<Menu>(null);
   const [hoverT, setHoverT] = useState<{ x: number; t: number } | null>(null);
   const [nextIn, setNextIn] = useState<number | null>(null);
   const [finder, setFinder] = useState(false);
+  const [touch, setTouch] = useState(false);
+  const [flash, setFlash] = useState<{ side: "left" | "right"; n: number } | null>(null);
+  const tapRef = useRef<{ at: number; x: number; timer: ReturnType<typeof setTimeout> | null }>({ at: 0, x: 0, timer: null });
   const [subRev, setSubRev] = useState<Record<string, number>>({});
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState("");
@@ -80,6 +85,25 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
       .catch((e) => live && setError(e.message));
     return () => { live = false; };
   }, [fileId]);
+
+  /* ---- touch devices: tap shows/hides the controls, double-tap the sides seeks, the screen stays awake while playing ---- */
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    const f = () => setTouch(mq.matches);
+    f();
+    mq.addEventListener("change", f);
+    return () => mq.removeEventListener("change", f);
+  }, []);
+  useEffect(() => {
+    if (!playing || !("wakeLock" in navigator)) return;
+    let lock: { release(): Promise<void> } | null = null;
+    let live = true;
+    const grab = () => (navigator as unknown as { wakeLock: { request(t: "screen"): Promise<{ release(): Promise<void> }> } }).wakeLock.request("screen").then((l) => { if (live) lock = l; else void l.release(); }).catch(() => {});
+    void grab();
+    const vis = () => { if (document.visibilityState === "visible" && live) void grab(); }; // the lock is dropped when the tab is hidden
+    document.addEventListener("visibilitychange", vis);
+    return () => { live = false; document.removeEventListener("visibilitychange", vis); void lock?.release().catch(() => {}); };
+  }, [playing]);
 
   /* ---- automatic (AI) subtitles: poll while they are generated and reload the track so new cues appear ---- */
   const generating = info?.subtitles.some((s) => s.auto && s.status === "generating") ?? false;
@@ -277,9 +301,37 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
   }, []);
   const toggle = () => { const v = videoRef.current; if (!v) return; v.paused ? v.play().catch(() => {}) : v.pause(); };
   const seekBy = (d: number) => { const v = videoRef.current; if (v) v.currentTime = Math.min(Math.max(0, v.currentTime + d), duration || v.duration || 1e9); poke(); };
-  const toggleFull = () => { if (document.fullscreenElement) document.exitFullscreen(); else wrapRef.current?.requestFullscreen?.().catch(() => {}); };
+  /** Mouse: click = play/pause. Touch: one tap toggles the controls; a double tap on the left/right third seeks 10 s, in the middle it plays/pauses. */
+  const onVideoTap = (e: React.MouseEvent) => {
+    if (!touch) { toggle(); return; }
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const t = tapRef.current;
+    const now = Date.now();
+    if (now - t.at < 300 && Math.abs(x - t.x) < 0.2) {
+      if (t.timer) clearTimeout(t.timer);
+      t.at = 0;
+      if (x < 0.35) { seekBy(-10); setFlash((f) => ({ side: "left", n: (f?.n ?? 0) + 1 })); }
+      else if (x > 0.65) { seekBy(10); setFlash((f) => ({ side: "right", n: (f?.n ?? 0) + 1 })); }
+      else toggle();
+      setTimeout(() => setFlash(null), 600);
+      return;
+    }
+    t.at = now; t.x = x;
+    if (t.timer) clearTimeout(t.timer);
+    t.timer = setTimeout(() => { t.at = 0; if (controlsRef.current && !videoRef.current?.paused) { setControls(false); setMenu(null); } else poke(); }, 300);
+  };
+  const toggleFull = () => {
+    const v = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    const wrap = wrapRef.current;
+    if (wrap?.requestFullscreen) {
+      // Phones: landscape while full screen (not supported everywhere; ignored when it fails)
+      wrap.requestFullscreen().then(() => { if (touch) (screen.orientation as unknown as { lock?: (o: string) => Promise<void> })?.lock?.("landscape").catch(() => {}); }).catch(() => {});
+    } else v?.webkitEnterFullscreen?.(); // iPhone Safari only fullscreens the <video> itself
+  };
   useEffect(() => {
-    const f = () => setFull(!!document.fullscreenElement);
+    const f = () => { setFull(!!document.fullscreenElement); if (!document.fullscreenElement) { try { screen.orientation?.unlock?.(); } catch { /* not locked */ } } };
     document.addEventListener("fullscreenchange", f);
     return () => document.removeEventListener("fullscreenchange", f);
   }, []);
@@ -343,8 +395,8 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
   const showUi = controls || !playing || !!menu;
 
   return (
-    <div ref={wrapRef} onMouseMove={poke} onClick={() => setMenu(null)} className={clsx("fixed inset-0 select-none overflow-hidden bg-black", !showUi && "cursor-none")}>
-      <video ref={videoRef} className="size-full bg-black object-contain" playsInline crossOrigin="use-credentials" onClick={(e) => { e.stopPropagation(); toggle(); }} onDoubleClick={toggleFull}>
+    <div ref={wrapRef} onPointerMove={(e) => { if (e.pointerType === "mouse") poke(); }} onClick={() => setMenu(null)} className={clsx("fixed inset-0 select-none overflow-hidden bg-black", !showUi && "cursor-none")}>
+      <video ref={videoRef} className="size-full bg-black object-contain" playsInline crossOrigin="use-credentials" onClick={(e) => { e.stopPropagation(); onVideoTap(e); }} onDoubleClick={() => { if (!touch) toggleFull(); }}>
         {info?.subtitles.map((s) => (
           <track key={`${s.id}:${subRev[s.id] ?? 0}`} kind="subtitles" label={s.label} srcLang={s.language?.slice(0, 2) ?? "und"} src={`/api/subtitles/${s.id}`} />
         ))}
@@ -360,6 +412,12 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
           </button>
         );
       })()}
+
+      {flash && (
+        <div key={flash.n} className={clsx("pointer-events-none absolute inset-y-0 flex w-1/3 items-center justify-center", flash.side === "left" ? "left-0" : "right-0")} aria-hidden>
+          <span className="flex flex-col items-center gap-1 rounded-full bg-black/50 px-5 py-4 text-sm font-semibold backdrop-blur">{flash.side === "left" ? <RotateCcw className="size-7" /> : <RotateCw className="size-7" />}10 s</span>
+        </div>
+      )}
 
       {busy && !error && <div className="pointer-events-none absolute inset-0 flex items-center justify-center"><Loader2 className="size-14 animate-spin text-white/90 drop-shadow" /></div>}
 
@@ -378,7 +436,7 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
       <AnimatePresence>
         {showUi && info && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="pointer-events-none absolute inset-0">
-            <div data-player-ui data-fixed className="pointer-events-auto absolute inset-x-0 top-0 flex items-center gap-4 bg-gradient-to-b from-black/85 to-transparent px-5 pb-10 pt-5" onClick={(e) => e.stopPropagation()}>
+            <div data-player-ui data-fixed className="pointer-events-auto absolute inset-x-0 top-0 flex items-center gap-3 bg-gradient-to-b from-black/85 to-transparent pb-10 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] sm:gap-4 sm:px-5 sm:pt-5" onClick={(e) => e.stopPropagation()}>
               <button onClick={back} aria-label="Back" className="rounded-full p-2 transition hover:bg-white/15"><ArrowLeft className="size-7" /></button>
               <div className="min-w-0">
                 <p className="truncate text-lg font-semibold">{info.title}</p>
@@ -387,7 +445,13 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
               <span title={detail} className="ml-auto hidden max-w-md truncate rounded-md bg-white/10 px-2.5 py-1 text-xs text-white/80 sm:block">{mode === "direct" ? "Direct play" : mode === "mediabunny" ? "Mediabunny" : "Transcoding"} · {detail}</span>
             </div>
 
-            {!playing && !busy && !error && (
+            {touch && !busy && !error ? (
+              <div data-player-ui className="pointer-events-auto absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-8" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => seekBy(-10)} aria-label="Back 10 seconds" className="flex size-14 items-center justify-center rounded-full bg-black/40 backdrop-blur active:bg-white/20"><RotateCcw className="size-7" /></button>
+                <button onClick={toggle} aria-label={playing ? "Pause" : "Play"} className="flex size-[4.5rem] items-center justify-center rounded-full bg-black/55 backdrop-blur active:bg-white/20">{playing ? <Pause className="size-9 fill-white" /> : <Play className="size-9 fill-white" />}</button>
+                <button onClick={() => seekBy(10)} aria-label="Forward 10 seconds" className="flex size-14 items-center justify-center rounded-full bg-black/40 backdrop-blur active:bg-white/20"><RotateCw className="size-7" /></button>
+              </div>
+            ) : !playing && !busy && !error && (
               <button onClick={(e) => { e.stopPropagation(); toggle(); }} aria-label="Play" className="pointer-events-auto absolute left-1/2 top-1/2 flex size-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 backdrop-blur transition hover:scale-110">
                 <Play className="size-10 fill-white" />
               </button>
@@ -399,9 +463,9 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
               </button>
             )}
 
-            <div data-player-ui data-fixed className="pointer-events-auto absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-5 pb-4 pt-16" onClick={(e) => e.stopPropagation()}>
+            <div data-player-ui data-fixed className="pointer-events-auto absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] pt-16" onClick={(e) => e.stopPropagation()}>
               <div
-                className="group relative mb-2 h-5 cursor-pointer"
+                className="group relative mb-1 h-5 cursor-pointer pointer-coarse:h-9 sm:mb-2"
                 onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHoverT({ x: e.clientX - r.left, t: ((e.clientX - r.left) / r.width) * duration }); }}
                 onMouseLeave={() => setHoverT(null)}
               >
@@ -409,7 +473,7 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
                   <div className="absolute inset-y-0 left-0 bg-white/35" style={{ width: `${bufPct}%` }} />
                   <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-accent to-accent-dark" style={{ width: `${pct}%` }} />
                 </div>
-                <div className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 scale-0 rounded-full bg-white shadow transition group-hover:scale-100 group-focus-within:scale-125" style={{ left: `${pct}%` }} />
+                <div className={clsx("absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow transition group-hover:scale-100 group-focus-within:scale-125", touch ? "scale-110" : "scale-0")} style={{ left: `${pct}%` }} />
                 <input
                   type="range" min={0} max={duration || 1} step={0.1} value={time} aria-label="Seek"
                   onChange={(e) => { const v = videoRef.current; if (v) { v.currentTime = Number(e.target.value); setTime(Number(e.target.value)); } }}
@@ -419,18 +483,18 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
               </div>
 
               <div className="flex items-center gap-1.5 sm:gap-3">
-                <IconBtn label={playing ? "Pause" : "Play"} onClick={toggle}>{playing ? <Pause className="size-7 fill-white" /> : <Play className="size-7 fill-white" />}</IconBtn>
-                <IconBtn label="Back 10 seconds" onClick={() => seekBy(-10)}><RotateCcw className="size-6" /></IconBtn>
-                <IconBtn label="Forward 10 seconds" onClick={() => seekBy(10)}><RotateCw className="size-6" /></IconBtn>
-                <div className="group/vol flex items-center">
+                {!touch && <IconBtn label={playing ? "Pause" : "Play"} onClick={toggle}>{playing ? <Pause className="size-7 fill-white" /> : <Play className="size-7 fill-white" />}</IconBtn>}
+                {!touch && <IconBtn label="Back 10 seconds" onClick={() => seekBy(-10)}><RotateCcw className="size-6" /></IconBtn>}
+                {!touch && <IconBtn label="Forward 10 seconds" onClick={() => seekBy(10)}><RotateCw className="size-6" /></IconBtn>}
+                <div className={clsx("group/vol flex items-center", touch && "hidden")}>
                   <IconBtn label={muted ? "Unmute" : "Mute"} onClick={() => { const v = videoRef.current; if (v) v.muted = !v.muted; }}>
                     {muted || volume === 0 ? <VolumeX className="size-6" /> : volume < 0.5 ? <Volume1 className="size-6" /> : <Volume2 className="size-6" />}
                   </IconBtn>
                   <input type="range" min={0} max={1} step={0.02} value={muted ? 0 : volume} aria-label="Volume" onChange={(e) => { const v = videoRef.current; if (v) { v.muted = false; v.volume = Number(e.target.value); } }} className="rift-range hidden w-0 transition-all group-hover/vol:w-24 sm:block" style={{ ["--track" as string]: "#ffffff55" }} />
                 </div>
-                <span className="ml-1 text-sm tabular-nums text-white/90">{fmt(time)} <span className="text-white/50">/ {fmt(duration)}</span></span>
+                <span className="ml-1 whitespace-nowrap text-sm tabular-nums text-white/90">{fmt(time)} <span className="text-white/50">/ {fmt(duration)}</span></span>
 
-                <div className="ml-auto flex items-center gap-1 sm:gap-2">
+                <div className="ml-auto flex items-center sm:gap-2">
                   {info.next && <IconBtn label="Next episode" onClick={() => setNextIn(0)}><SkipForward className="size-6" /></IconBtn>}
                   <MenuBtn icon={<Subtitles className="size-6" />} label="Subtitles" open={menu === "subs"} onToggle={() => setMenu(menu === "subs" ? null : "subs")} active={subIndex >= 0}>
                     <MenuItem checked={subIndex < 0} onClick={() => { setSubIndex(-1); setMenu(null); }}>Off</MenuItem>
@@ -490,16 +554,16 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
 }
 
 function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
-  return <button aria-label={label} title={label} onClick={onClick} className="rounded-full p-2 text-white transition hover:scale-110 hover:bg-white/15">{children}</button>;
+  return <button aria-label={label} title={label} onClick={onClick} className="rounded-full p-2 text-white transition hover:scale-110 hover:bg-white/15 pointer-coarse:p-2.5">{children}</button>;
 }
 
 function MenuBtn({ icon, label, open, onToggle, active, children }: { icon: React.ReactNode; label: string; open: boolean; onToggle: () => void; active?: boolean; children: React.ReactNode }) {
   return (
-    <div className="relative">
-      <button aria-label={label} title={label} aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle(); }} className={clsx("rounded-full p-2 transition hover:scale-110 hover:bg-white/15", active && "text-accent")}>{icon}</button>
+    <div className="sm:relative">
+      <button aria-label={label} title={label} aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle(); }} className={clsx("rounded-full p-2 transition hover:scale-110 hover:bg-white/15 pointer-coarse:p-2.5", active && "text-accent")}>{icon}</button>
       <AnimatePresence>
         {open && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.12 }} onClick={(e) => e.stopPropagation()} className="glass absolute bottom-full right-0 mb-3 max-h-72 min-w-48 overflow-y-auto rounded-xl border border-white/10 py-1.5 text-sm shadow-2xl">
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.12 }} onClick={(e) => e.stopPropagation()} className="glass fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 max-h-[55dvh] overflow-y-auto rounded-xl border border-white/10 py-1.5 text-sm shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-full sm:right-0 sm:mb-3 sm:max-h-[min(18rem,calc(100dvh-9rem))] sm:min-w-48">
             <p className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/45">{label}</p>
             {children}
           </motion.div>
@@ -511,7 +575,7 @@ function MenuBtn({ icon, label, open, onToggle, active, children }: { icon: Reac
 
 function MenuItem({ checked, onClick, children }: { checked: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-2 whitespace-nowrap px-4 py-2 text-left hover:bg-white/10">
+    <button onClick={onClick} className="flex w-full items-center gap-2 whitespace-nowrap px-4 py-2 text-left hover:bg-white/10 pointer-coarse:py-3">
       <span className="w-4">{checked && <Check className="size-4 text-accent" />}</span>
       <span>{children}</span>
     </button>

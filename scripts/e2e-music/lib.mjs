@@ -2,7 +2,7 @@
 // set PLAYWRIGHT_RESOLVE_FROM to a directory (with trailing slash) whose node_modules has it, or install it globally.
 import { createRequire } from "node:module";
 const require = createRequire(process.env.PLAYWRIGHT_RESOLVE_FROM || import.meta.url);
-export const { chromium, request } = require("playwright");
+export const { chromium, request, devices } = require("playwright");
 export const BASE = "http://localhost:3100";
 export const WORKER = "http://127.0.0.1:4100";
 export const E = process.env.E;

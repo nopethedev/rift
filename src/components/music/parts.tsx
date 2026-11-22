@@ -81,7 +81,7 @@ export function HeartButton({ item, className }: { item: Pick<RowItem, "input" |
     <button
       aria-label={on ? `Remove ${item.title} from Liked songs` : `Add ${item.title} to Liked songs`} aria-pressed={on} title={err || (on ? "In your library · click to remove" : "Add to your library (Liked songs)")}
       onClick={() => { setErr(""); saved.toggle(item.artist, item.title, item.input).catch((e: Error) => setErr(e.message)); }}
-      className={clsx("rounded-md p-1.5 transition", on ? "text-accent" : "text-white/40 hover:text-white sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100", err && "text-red-400", className)}
+      className={clsx("rounded-md p-2.5 transition pointer-fine:p-1.5", on ? "text-accent" : "text-white/40 hover:text-white sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100", err && "text-red-400", className)}
     >
       <Heart className={clsx("size-4", on && "fill-current")} />
     </button>
@@ -93,7 +93,7 @@ function MatchButton({ item }: { item: RowItem }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button onClick={() => setOpen(true)} aria-label={`Match ${item.title} yourself`} className="inline-flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-xs font-medium text-white/80 hover:bg-white/20"><Link2 className="size-3.5" /> <span className="hidden sm:inline">Match</span></button>
+      <button onClick={() => setOpen(true)} aria-label={`Match ${item.title} yourself`} className="inline-flex items-center gap-1 rounded-md bg-white/10 px-3 py-2 text-xs font-medium text-white/80 hover:bg-white/20 pointer-fine:px-2 pointer-fine:py-1"><Link2 className="size-3.5" /> <span className="hidden sm:inline">Match</span></button>
       {open && <MatchModal title={item.title} artist={item.artist} onClose={() => setOpen(false)} onPick={item.onMatch!} />}
     </>
   );
@@ -158,7 +158,7 @@ export function TrackMenu({ item }: { item: Pick<RowItem, "input" | "trackId" | 
   const act = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
     <div ref={ref} className="relative">
-      <button aria-label={`Options for ${item.title}`} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="rounded-md p-1.5 text-white/60 hover:bg-white/10 hover:text-white"><MoreHorizontal className="size-4" /></button>
+      <button aria-label={`Options for ${item.title}`} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="rounded-md p-2.5 text-white/60 hover:bg-white/10 hover:text-white pointer-fine:p-1.5"><MoreHorizontal className="size-4" /></button>
       {open && (
         <div className="glass absolute right-0 z-30 mt-1 w-52 overflow-hidden rounded-xl border border-white/10 py-1 text-sm shadow-2xl">
           <button onClick={act(() => void addToQueue([item.input], "next"))} className="flex w-full items-center gap-3 px-3.5 py-2 text-left hover:bg-white/10"><ListStart className="size-4" /> Play next</button>

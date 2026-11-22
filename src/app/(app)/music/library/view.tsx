@@ -39,7 +39,7 @@ export function LibraryView() {
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 rounded-full bg-white/5 p-1" role="tablist">
-          {(["albums", "artists", "tracks"] as const).map((t) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={clsx("rounded-full px-4 py-1.5 text-sm font-medium capitalize", tab === t ? "bg-accent text-white" : "text-white/70 hover:text-white")}>{t}</button>)}
+          {(["albums", "artists", "tracks"] as const).map((t) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={clsx("rounded-full px-4 py-2.5 text-sm font-medium capitalize pointer-fine:py-1.5", tab === t ? "bg-accent text-white" : "text-white/70 hover:text-white")}>{t}</button>)}
         </div>
         <div className="w-full sm:w-72"><Input aria-label="Filter library" placeholder={`Filter ${tab}`} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       </div>

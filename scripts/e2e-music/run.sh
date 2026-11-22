@@ -30,7 +30,7 @@ python3 -m http.server 8099 --bind 127.0.0.1 --directory "$E/files" >/dev/null 2
 env WORKER_TOKEN=e2e WORKER_PORT=4100 WORKER_HOST=127.0.0.1 TRANSCODE_DIR="$E/transcode" YTDLP_PATH="$E/ytdlp-wrap.py" \
   SINK_PUBLIC_HOST=localhost SINK_PUBLIC_IP=127.0.0.1 SINK_WSS_PORT=24443 SINK_UDP_PORT=24444 SINK_TLS_DIR="$E/sink" \
   npx tsx worker/index.ts >"$E/worker.log" 2>&1 & PIDS+=($!)
-env DEEZER_API_URL=http://localhost:8098 ITUNES_API_URL=http://localhost:8098/itunes WIKIPEDIA_API_URL=http://localhost:8098/wiki MUSIC_ART_HOSTS=localhost:8098 \
+env TMDB_BASE_URL=http://localhost:8098/tmdb DEEZER_API_URL=http://localhost:8098 ITUNES_API_URL=http://localhost:8098/itunes WIKIPEDIA_API_URL=http://localhost:8098/wiki MUSIC_ART_HOSTS=localhost:8098 \
   DATABASE_URL="file:$E/rift.db" DATA_DIR="$E/data" MEDIA_DIR="$E/media" WORKER_URL=http://127.0.0.1:4100 WORKER_TOKEN=e2e \
   npm run dev -- -p 3100 >"$E/web.log" 2>&1 & PIDS+=($!)
 for _ in $(seq 1 90); do curl -fs -o /dev/null http://localhost:3100/login && break; sleep 1; done
@@ -38,7 +38,7 @@ curl -fs -o /dev/null http://localhost:3100/login || { echo "web server did not 
 for _ in $(seq 1 30); do [ -s "$E/sink/cert.pem" ] && break; sleep 1; done
 
 rc=0
-DEFAULT_PARTS="part1-local part2-ondemand part4-security part6-discover"
+DEFAULT_PARTS="part1-local part2-ondemand part4-security part6-discover part8-mobile"
 if [ -n "${WHISPER_MODEL_DIR:-}" ]; then DEFAULT_PARTS="$DEFAULT_PARTS part7-subtitles"; else echo "(part7-subtitles skipped: set WHISPER_MODEL_DIR to a folder containing Xenova/whisper-tiny)"; fi
 for part in ${PARTS:-$DEFAULT_PARTS}; do
   echo "=== $part"; node "$HERE/$part.mjs" || rc=1

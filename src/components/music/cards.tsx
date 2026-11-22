@@ -23,12 +23,12 @@ export function ShelfRow({ title, subtitle, href, children }: { title: string; s
           <button aria-label="Scroll right" onClick={() => by(1)} className="rounded-full bg-black/30 p-1.5 text-white/70 opacity-0 transition hover:text-white group-hover/shelf:opacity-100 focus-visible:opacity-100"><ChevronRight className="size-5" /></button>
         </div>
       </div>
-      <div ref={ref} className="no-scrollbar -mx-2 flex snap-x gap-4 overflow-x-auto px-2 pb-2 [scroll-padding:0_0.5rem]">{children}</div>
+      <div ref={ref} className="no-scrollbar -mx-2 flex gap-4 overflow-x-auto overscroll-x-contain px-2 pb-2">{children}</div>
     </section>
   );
 }
 
-const CARD = "group relative w-36 shrink-0 snap-start rounded-xl p-2 transition hover:bg-white/10 focus-within:bg-white/10 sm:w-44";
+const CARD = "group relative w-36 shrink-0 rounded-xl p-2 transition hover:bg-white/10 focus-within:bg-white/10 sm:w-44";
 
 function PlayFab({ onClick, label, active, playing }: { onClick: () => void; label: string; active?: boolean; playing?: boolean }) {
   return (
@@ -46,8 +46,8 @@ export function CatTrackCard({ t, all, index }: { t: CatTrack; all: CatTrack[]; 
   return (
     <div className={CARD} data-card>
       <div className="relative"><Cover src={t.artworkUrl} className="aspect-square w-full" rounded="rounded-lg" /><PlayFab onClick={go} label={`Play ${t.title}`} active={active} playing={playing} /></div>
-      <button data-focusable onClick={go} className="mt-2 block w-full text-left outline-none"><p className={clsx("truncate text-sm font-semibold", active && "text-violet-300")}>{t.title}</p></button>
-      {t.artistId ? <Link href={`/music/artists/${encodeURIComponent(t.artist)}?id=${t.artistId}`} className="block truncate text-xs text-muted hover:text-white hover:underline">{t.artist}</Link> : <p className="truncate text-xs text-muted">{t.artist}</p>}
+      <button data-focusable onClick={go} className="mt-1 block w-full py-1 text-left outline-none"><p className={clsx("truncate text-sm font-semibold", active && "text-violet-300")}>{t.title}</p></button>
+      {t.artistId ? <Link href={`/music/artists/${encodeURIComponent(t.artist)}?id=${t.artistId}`} className="block truncate py-1 text-xs text-muted hover:text-white hover:underline">{t.artist}</Link> : <p className="truncate text-xs text-muted">{t.artist}</p>}
     </div>
   );
 }
@@ -80,8 +80,8 @@ export function LocalTrackCard({ t, all, index }: { t: TrackDTO; all: TrackDTO[]
   return (
     <div className={CARD} data-card>
       <div className="relative"><Cover src={t.coverUrl} className="aspect-square w-full" rounded="rounded-lg" /><PlayFab onClick={go} label={`Play ${t.title}`} active={active} playing={playing} /></div>
-      <button data-focusable onClick={go} className="mt-2 block w-full text-left outline-none"><p className={clsx("truncate text-sm font-semibold", active && "text-violet-300")}>{t.title}</p></button>
-      <Link href={`/music/artists/${encodeURIComponent(t.artist)}`} className="block truncate text-xs text-muted hover:text-white hover:underline">{t.artist}</Link>
+      <button data-focusable onClick={go} className="mt-1 block w-full py-1 text-left outline-none"><p className={clsx("truncate text-sm font-semibold", active && "text-violet-300")}>{t.title}</p></button>
+      <Link href={`/music/artists/${encodeURIComponent(t.artist)}`} className="block truncate py-1 text-xs text-muted hover:text-white hover:underline">{t.artist}</Link>
     </div>
   );
 }

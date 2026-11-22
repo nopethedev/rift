@@ -19,7 +19,7 @@ export const Button = forwardRef<HTMLButtonElement, BtnProps>(function Button(
       disabled={disabled || loading}
       className={clsx(
         "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition select-none disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
-        size === "sm" && "px-3 py-1.5 text-sm",
+        size === "sm" && "px-3 py-1.5 text-sm pointer-coarse:py-2.5",
         size === "md" && "px-4 py-2.5 text-sm",
         size === "lg" && "px-6 py-3 text-base",
         variant === "primary" && "btn-primary text-white",

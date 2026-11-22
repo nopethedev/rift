@@ -144,10 +144,10 @@ export default async function TitlePage({
               <p className="text-sm text-muted">
                 This title is not in your library yet.
                 {user.role === "ADMIN" && (
-                  <Link href={`/admin/media/new?tmdbId=${tmdbId}&type=${type}`} className="ml-2 inline-flex items-center gap-1 font-semibold text-violet-300 hover:underline"><Download className="size-3.5" /> Add to library</Link>
+                  <Link href={`/admin/media/new?tmdbId=${tmdbId}&type=${type}`} className="ml-2 inline-flex items-center gap-1 py-2.5 font-semibold text-violet-300 hover:underline pointer-fine:py-0"><Download className="size-3.5" /> Add to library</Link>
                 )}
                 {user.role === "ADMIN" && (
-                  <Link href={`/admin/media/new?tmdbId=${tmdbId}&type=${type}&source=torrent`} className="ml-3 inline-flex items-center gap-1 font-semibold text-violet-300 hover:underline"><Zap className="size-3.5" /> Stream via torrent</Link>
+                  <Link href={`/admin/media/new?tmdbId=${tmdbId}&type=${type}&source=torrent`} className="ml-3 inline-flex items-center gap-1 py-2.5 font-semibold text-violet-300 hover:underline pointer-fine:py-0"><Zap className="size-3.5" /> Stream via torrent</Link>
                 )}
               </p>
             )}
@@ -166,7 +166,7 @@ export default async function TitlePage({
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <h2 className="mr-3 text-xl font-semibold">Episodes</h2>
                 {seasons.map((s) => (
-                  <Link key={s.number} replace scroll={false} href={`/title/tv/${tmdbId}?season=${s.number}`} className={`rounded-full px-3.5 py-1 text-sm transition ${s.number === seasonNumber ? "bg-accent text-white" : "bg-white/10 hover:bg-white/20"}`}>S{s.number}</Link>
+                  <Link key={s.number} replace scroll={false} href={`/title/tv/${tmdbId}?season=${s.number}`} className={`rounded-full px-4 py-2 text-sm transition pointer-fine:px-3.5 pointer-fine:py-1 ${s.number === seasonNumber ? "bg-accent text-white" : "bg-white/10 hover:bg-white/20"}`}>S{s.number}</Link>
                 ))}
               </div>
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">

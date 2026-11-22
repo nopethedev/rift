@@ -144,6 +144,15 @@ Playback uses direct play or in-browser Mediabunny (so DD+ still works); video t
 
 > Only download or upload content you own or are licensed to use. Nothing is ever downloaded automatically from TMDB discovery results.
 
+## Mobile and installing on a phone
+
+Rift is built mobile-first and is tested on phone-sized touch devices (iPhone 13 portrait/landscape and a 360 px Android) by `scripts/e2e-music/part8-mobile.mjs` (every page: no horizontal overflow, shelves start at the edge, finger-sized controls, no JS errors).
+
+- **Install it**: open Rift in the phone's browser → *Add to Home Screen* / *Install app*. It then opens full screen with its own icon (web app manifest, maskable icon, Apple touch icon, a tiny service worker that only shows a friendly page when the server is unreachable; nothing is cached). *Stream* and *Music* are long-press shortcuts on the icon.
+- **Video player on touch screens**: tap shows/hides the controls; **double-tap the left/right side to skip 10 s** (middle = play/pause); big play/pause and ±10 s buttons; a tall seek bar; menus open as sheets that fit the screen; full screen switches to landscape where the browser allows it (iPhone Safari uses its native full screen); the screen stays awake while playing.
+- **Music on a phone**: bottom tabs (Home, Search, Library, Liked, Apps), a mini player above them that opens a full-screen now-playing sheet, lock-screen controls (Media Session), larger heart/menu buttons.
+- Notches and rounded corners are respected (`viewport-fit=cover` + safe-area insets); hover-only features (trailer previews) become a bottom sheet on touch.
+
 ## Automatic subtitles (Whisper)
 
 When a title has no subtitles, Rift can write them from the film's own audio with **OpenAI Whisper** (tiny model by default), running on the worker's CPU through ONNX Runtime ([transformers.js](https://github.com/huggingface/transformers.js)). Nothing leaves your server.

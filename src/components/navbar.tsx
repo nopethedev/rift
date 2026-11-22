@@ -48,7 +48,7 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
   }
 
   return (
-    <nav className={clsx("fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 px-4 sm:gap-6 transition-colors duration-300 sm:px-12", solid ? "bg-bg/95 shadow-lg backdrop-blur" : "bg-gradient-to-b from-black/80 to-transparent")}>
+    <nav className={clsx("fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:gap-6 transition-colors duration-300 sm:px-12", solid ? "bg-bg/95 shadow-lg backdrop-blur" : "bg-gradient-to-b from-black/80 to-transparent")}>
       <Link href="/" aria-label="Rift home" className={clsx("shrink-0", searching && "hidden sm:block")}><Logo /></Link>
       <ul className="hidden items-center gap-5 text-sm md:flex">
         {LINKS.map((l) => (
@@ -68,7 +68,7 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
           )}
         </div>
         <div className="relative">
-          <button onClick={() => { setTv(isTvMode()); setMenu((m) => !m); }} aria-label="Account menu" aria-expanded={menu} className="flex items-center rounded-md outline-none ring-accent focus-visible:ring-2"><Avatar avatar={profile.avatar} size={34} /></button>
+          <button onClick={() => { setTv(isTvMode()); setMenu((m) => !m); }} aria-label="Account menu" aria-expanded={menu} className="flex items-center rounded-md outline-none ring-accent focus-visible:ring-2"><Avatar avatar={profile.avatar} size={34} className="m-[3px]" /></button>
           {menu && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
@@ -95,7 +95,7 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
 export function MobileTabs() {
   const path = usePathname();
   return (
-    <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/10 pb-[env(safe-area-inset-bottom)] md:hidden">
+    <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-white/10 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] md:hidden">
       {LINKS.map((l) => {
         const on = l.href === "/" ? path === "/" : path.startsWith(l.href);
         return (

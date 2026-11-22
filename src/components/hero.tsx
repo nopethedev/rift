@@ -59,7 +59,7 @@ export function Hero({ items }: { items: CardItem[] }) {
       {items.length > 1 && (
         <div className="absolute right-4 top-[4.5rem] flex gap-1.5 sm:bottom-16 sm:right-12 sm:top-auto">
           {items.map((x, n) => (
-            <button key={x.key} tabIndex={-1} aria-label={`Show ${x.title}`} onClick={() => setI(n)} className={`h-1 rounded-full transition-all ${n === i ? "w-8 bg-accent" : "w-4 bg-white/30 hover:bg-white/60"}`} />
+            <button key={x.key} tabIndex={-1} aria-label={`Show ${x.title}`} onClick={() => setI(n)} className="group/dot py-3"><span className={`block h-1 rounded-full transition-all ${n === i ? "w-8 bg-accent" : "w-4 bg-white/30 group-hover/dot:bg-white/60"}`} /></button>
           ))}
         </div>
       )}

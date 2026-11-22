@@ -31,9 +31,9 @@ export function Row({ title, items, href }: { title: string; items: CardItem[]; 
             <ChevronLeft className="size-8" />
           </button>
         )}
-        <div ref={scroller} onScroll={update} className="no-scrollbar flex snap-x gap-2.5 overflow-x-auto scroll-smooth px-4 py-3 sm:px-12">
+        <div ref={scroller} onScroll={update} className="no-scrollbar flex gap-2.5 overflow-x-auto overscroll-x-contain scroll-smooth px-4 py-3 sm:px-12">
           {items.map((it) => (
-            <PosterCard key={it.key} item={it} inline className="snap-start" />
+            <PosterCard key={it.key} item={it} inline />
           ))}
         </div>
         {edge.right && (

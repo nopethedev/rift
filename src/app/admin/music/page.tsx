@@ -96,7 +96,7 @@ export default function AdminMusicPage() {
             <div key={t.id} className="flex items-center gap-3 border-b border-line/60 py-1.5 text-sm last:border-0">
               <span className="min-w-0 flex-1 truncate">{t.title} <span className="text-muted">· {t.artist}{t.album ? ` · ${t.album}` : ""}</span></span>
               <Badge>{t.codec}</Badge>
-              <button aria-label={`Remove ${t.title}`} onClick={() => del(t)} className="text-white/40 hover:text-red-300"><Trash2 className="size-4" /></button>
+              <button aria-label={`Remove ${t.title}`} onClick={() => del(t)} className="-m-2 p-2 text-white/40 hover:text-red-300"><Trash2 className="size-4" /></button>
             </div>
           )) : <p className="text-sm text-muted">Nothing yet.</p>}
         </Card>

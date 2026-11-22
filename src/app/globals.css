@@ -21,6 +21,8 @@ html { color-scheme: dark; }
 html, body { overflow-x: clip; }
 /* Grid items default to min-width:auto and can blow a column out past the viewport; let them shrink. */
 @layer base { .grid > * { min-width: 0; } }
+/* landscape phones with a notch: keep normal content out of the cut-outs (fixed bars add the insets themselves) */
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 body { background: var(--color-bg); color: #f3f3fa; font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 ::selection { background: color-mix(in srgb, var(--color-accent) 50%, transparent); }
 

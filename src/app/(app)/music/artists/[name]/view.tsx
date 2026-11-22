@@ -28,8 +28,8 @@ function About({ text, url }: { text: string; url: string | null }) {
     <>
       <p className={clsx("whitespace-pre-line leading-relaxed text-white/80", !more && "line-clamp-6")}>{text}</p>
       <div className="mt-2 flex items-center gap-3">
-        {text.length > 280 && <button onClick={() => setMore((m) => !m)} className="text-xs font-semibold text-violet-300 hover:underline">{more ? "Show less" : "Show more"}</button>}
-        {url && <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-muted hover:text-white">Wikipedia <ExternalLink className="size-3" /></a>}
+        {text.length > 280 && <button onClick={() => setMore((m) => !m)} className="py-2 text-xs font-semibold text-violet-300 hover:underline">{more ? "Show less" : "Show more"}</button>}
+        {url && <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 py-2 text-xs text-muted hover:text-white">Wikipedia <ExternalLink className="size-3" /></a>}
       </div>
     </>
   );
@@ -138,7 +138,7 @@ export function ArtistView({ name, id }: { name: string; id?: string }) {
         {!!p?.albums.length && (
           <section className="mt-6">
             <SectionTitle action={
-              <div className="flex gap-1 rounded-full bg-white/5 p-1" role="tablist">{([["all", "All"], ["album", "Albums"], ["single", "Singles & EPs"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={disco === k} onClick={() => setDisco(k)} className={clsx("rounded-full px-3 py-1 text-xs font-medium", disco === k ? "bg-white text-black" : "text-white/70 hover:text-white")}>{l}</button>)}</div>
+              <div className="flex gap-1 rounded-full bg-white/5 p-1" role="tablist">{([["all", "All"], ["album", "Albums"], ["single", "Singles & EPs"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={disco === k} onClick={() => setDisco(k)} className={clsx("rounded-full px-3 py-2 text-xs font-medium pointer-fine:py-1", disco === k ? "bg-white text-black" : "text-white/70 hover:text-white")}>{l}</button>)}</div>
             }>Discography</SectionTitle>
             <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">{albums.map((a) => <CatAlbumCard key={a.id} a={a} />)}</div>
             {!albums.length && <p className="text-sm text-muted">Nothing in this category.</p>}

@@ -53,7 +53,7 @@ export function MusicShell({ profile, isAdmin, children }: { profile: { name: st
 
   return (
     <div className="min-h-dvh">
-      <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-3 bg-bg/90 px-3 backdrop-blur sm:px-4">
+      <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-3 bg-bg/90 pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] backdrop-blur sm:pl-4 sm:pr-4">
         <Link href="/apps" aria-label="Switch app" title="Switch app" className="hidden rounded-full p-2 text-white/70 hover:bg-white/10 hover:text-white md:block"><LayoutGrid className="size-5" /></Link>
         <Link href="/music" aria-label="Rift Music home" className="shrink-0"><Logo size={26} /></Link>
         <span className="hidden rounded-full bg-accent/20 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-violet-300 sm:block">Music</span>
@@ -106,7 +106,7 @@ export function MusicShell({ profile, isAdmin, children }: { profile: { name: st
         </div>
       </main>
 
-      <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 pb-[env(safe-area-inset-bottom)] md:hidden">
+      <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] md:hidden">
         {[{ href: "/music", label: "Home", icon: Home, exact: true }, NAV[1], { ...NAV[2], label: "Library" }, { href: "/music/liked", label: "Liked", icon: Heart }, { href: "/apps", label: "Apps", icon: LayoutGrid }].map((l) => {
           const on = l.href !== "/apps" && isOn(path, l as (typeof NAV)[number]);
           return (

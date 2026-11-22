@@ -26,7 +26,7 @@ export function AdminNav({ username }: { username: string }) {
       <div className="flex items-center justify-between px-5 py-4 lg:block">
         <Logo />
         <p className="hidden text-xs text-muted lg:mt-1 lg:block">Admin · {username}</p>
-        <Link href="/" className="flex items-center gap-1 text-sm text-muted hover:text-white lg:hidden"><ArrowLeft className="size-4" /> Back to Rift</Link>
+        <Link href="/" className="flex items-center gap-1 py-2 text-sm text-muted hover:text-white lg:hidden"><ArrowLeft className="size-4" /> Back to Rift</Link>
       </div>
       <nav className="no-scrollbar flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-col lg:overflow-visible lg:pb-0">
         {ITEMS.map((i) => (

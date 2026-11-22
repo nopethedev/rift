@@ -30,6 +30,27 @@ const wiki = {
   Other_Artist: { type: "disambiguation", title: "Other Artist", extract: "Other Artist may refer to:" },
 };
 
+// ---- TMDB (v3) stand-in under /tmdb: lists of sample titles, details with cast / seasons, and a few episodes
+const sample = (i, kind) => ({ id: 1000 + i, ...(kind === "tv" ? { name: `Sample Show ${i}`, first_air_date: `20${10 + (i % 14)}-03-01` } : { title: `Sample Movie ${i}`, release_date: `20${10 + (i % 14)}-06-15` }), poster_path: `/p${i}.jpg`, backdrop_path: `/b${i}.jpg`, overview: `A sample ${kind === "tv" ? "series" : "film"} used to test the layout. It has a long enough description to wrap over several lines on a narrow phone screen, because real overviews do.`, vote_average: 6 + (i % 4), genre_ids: [18, 28], popularity: 100 - i });
+const list = (kind, mixed) => ({ page: 1, total_pages: 1, results: Array.from({ length: 20 }, (_, i) => (mixed ? { ...sample(i, i % 2 ? "tv" : "movie"), media_type: i % 2 ? "tv" : "movie" } : sample(i, kind))) });
+function tmdb(u) {
+  const p = u.pathname.replace(/^\/tmdb\/3/, "").replace(/^\/tmdb/, "");
+  let m;
+  if ((m = /^\/(movie|tv)\/(\d+)\/season\/(\d+)$/.exec(p))) return { id: 5, season_number: +m[3], name: `Season ${m[3]}`, episodes: Array.from({ length: 6 }, (_, i) => ({ id: 70 + i, episode_number: i + 1, season_number: +m[3], name: `Episode ${i + 1}`, overview: "A sample episode with a short description.", runtime: 44, still_path: `/e${i}.jpg`, air_date: "2020-01-0" + (i + 1) })) };
+  if ((m = /^\/(movie|tv)\/(\d+)\/(recommendations|similar)$/.exec(p))) return list(m[1]);
+  if ((m = /^\/(movie|tv)\/(\d+)$/.exec(p))) {
+    const kind = m[1], i = (+m[2] - 1000 + 20) % 20;
+    return { ...sample(i, kind), id: +m[2], tagline: "A tagline for the test", runtime: 118, episode_run_time: [44], number_of_seasons: 3, status: "Released", genres: [{ id: 18, name: "Drama" }, { id: 28, name: "Action" }],
+      seasons: [0, 1, 2, 3].map((n) => ({ season_number: n, name: n ? `Season ${n}` : "Specials", episode_count: 6, poster_path: `/p${n}.jpg` })),
+      videos: { results: [] }, credits: { cast: Array.from({ length: 10 }, (_, k) => ({ id: 500 + k, name: `Actor Name ${k}`, character: `Character ${k}`, profile_path: `/c${k}.jpg` })) },
+      release_dates: { results: [{ iso_3166_1: "US", release_dates: [{ certification: "PG-13" }] }] }, content_ratings: { results: [{ iso_3166_1: "US", rating: "TV-14" }] } };
+  }
+  if (/^\/(search\/multi|trending\/all)/.test(p)) return list("movie", true);
+  if (/^\/(discover|trending|search)\/tv|^\/tv\//.test(p)) return list("tv");
+  if (/^\/genre\//.test(p)) return { genres: [{ id: 18, name: "Drama" }, { id: 28, name: "Action" }] };
+  return list("movie");
+}
+
 function route(u) {
   const p = u.pathname;
   if (p === "/chart/0" || /^\/chart\/\d+$/.test(p)) return chart();
@@ -56,6 +77,7 @@ http.createServer((req, res) => {
   stats[u.pathname] = (stats[u.pathname] ?? 0) + 1;
   const send = (code, body, type = "application/json") => { res.writeHead(code, { "content-type": type }); res.end(typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
   if (u.pathname === "/__stats") return send(200, stats);
+  if (u.pathname.startsWith("/tmdb")) return send(200, tmdb(u));
   if (u.pathname === "/__down") { globalThis.down = u.searchParams.get("on") === "1"; return send(200, { down: globalThis.down }); }
   if (u.pathname.startsWith("/img/")) return send(200, jpg, "image/jpeg");
   if (globalThis.down) return send(503, { error: "down" });
