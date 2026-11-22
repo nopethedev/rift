@@ -17,6 +17,8 @@ export async function bootServices() {
     startLibraryWatcher();
     const { startMusicWatcher } = await import("./music/library");
     startMusicWatcher();
+    const { resumeAiSubtitles } = await import("./subtitle-ai");
+    await resumeAiSubtitles().catch(() => {});
     console.log("[rift] background services started");
   } catch (e) {
     g.__riftBooted = false;

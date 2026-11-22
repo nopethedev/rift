@@ -32,6 +32,9 @@ const schema = z.object({
   opensubtitlesPassword: z.string().max(200),
   onDemandMaxStreams: z.number().int().min(0).max(50),
   onDemandAccess: z.enum(["admins", "everyone"]),
+  whisperEnabled: z.boolean(), whisperAuto: z.boolean(),
+  whisperModel: z.enum(["Xenova/whisper-tiny", "Xenova/whisper-tiny.en", "Xenova/whisper-base", "Xenova/whisper-base.en", "Xenova/whisper-small", "Xenova/whisper-small.en"]),
+  whisperLanguage: z.string().regex(/^(auto|[a-z]{2,3})$/), whisperTranslate: z.boolean(), whisperAccess: z.enum(["admins", "everyone"]),
   subtitleLanguages: z.array(z.string().regex(/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/)).min(1).max(8),
 }).partial();
 

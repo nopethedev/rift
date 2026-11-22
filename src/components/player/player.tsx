@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  AlertTriangle, ArrowLeft, AudioLines, Check, Gauge, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Search, SkipForward, Subtitles, Settings, Volume1, Volume2, VolumeX,
+  AlertTriangle, ArrowLeft, AudioLines, Check, Gauge, Languages, Loader2, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Search, SkipForward, Sparkles, Subtitles, Settings, Volume1, Volume2, VolumeX,
 } from "lucide-react";
 import type { PlayerInfo } from "@/lib/types";
 import { decide, pickAudioEncoder, type PlayMode } from "@/lib/compat";
@@ -58,6 +58,9 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
   const [hoverT, setHoverT] = useState<{ x: number; t: number } | null>(null);
   const [nextIn, setNextIn] = useState<number | null>(null);
   const [finder, setFinder] = useState(false);
+  const [subRev, setSubRev] = useState<Record<string, number>>({});
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState("");
 
   const duration = info?.durationSec ?? 0;
 
@@ -77,6 +80,46 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
       .catch((e) => live && setError(e.message));
     return () => { live = false; };
   }, [fileId]);
+
+  /* ---- automatic (AI) subtitles: poll while they are generated and reload the track so new cues appear ---- */
+  const generating = info?.subtitles.some((s) => s.auto && s.status === "generating") ?? false;
+  useEffect(() => {
+    if (!generating || torrent) return;
+    let live = true;
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/subtitles/ai/${fileId}`);
+        if (!r.ok || !live) return;
+        const st = (await r.json()) as { subtitle?: { id: string; status: "generating" | "ready" | "failed"; progress: number; label: string; note?: string } };
+        const u = st.subtitle;
+        if (!u || !live) return;
+        setInfo((i) => (i ? { ...i, subtitles: i.subtitles.map((s) => (s.id === u.id ? { ...s, status: u.status, progress: u.progress, label: u.label, note: u.note } : s)) } : i));
+        setSubRev((m) => ({ ...m, [u.id]: (m[u.id] ?? 0) + 1 }));
+      } catch { /* try again */ }
+    };
+    const t = setInterval(poll, 4000);
+    return () => { live = false; clearInterval(t); };
+  }, [generating, fileId, torrent]);
+
+  async function startAi(translate: boolean) {
+    if (!info) return;
+    setAiBusy(true); setAiMsg("");
+    try {
+      const r = await fetch(`/api/subtitles/ai/${fileId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ translate, startSec: Math.floor(videoRef.current?.currentTime ?? 0) }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Could not start");
+      const s = j.subtitle as { id: string; status: "generating" | "ready" | "failed"; progress: number; label: string; language?: string; note?: string };
+      setInfo((i) => {
+        if (!i) return i;
+        const entry = { id: s.id, label: s.label, language: s.language, isDefault: false, auto: true, status: s.status, progress: s.progress, note: s.note };
+        const has = i.subtitles.some((x) => x.id === s.id);
+        return { ...i, subtitles: has ? i.subtitles.map((x) => (x.id === s.id ? entry : x)) : [...i.subtitles, entry], ai: i.ai ? { ...i.ai, mayStart: false } : i.ai };
+      });
+      setSubIndex(info.subtitles.some((x) => x.id === s.id) ? info.subtitles.findIndex((x) => x.id === s.id) : info.subtitles.length);
+      setMenu(null);
+    } catch (e) { setAiMsg((e as Error).message); }
+    setAiBusy(false);
+  }
 
   /* ---- (re)start engine whenever source options change ---- */
   const startAtRef = useRef<number | null>(null);
@@ -303,9 +346,20 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
     <div ref={wrapRef} onMouseMove={poke} onClick={() => setMenu(null)} className={clsx("fixed inset-0 select-none overflow-hidden bg-black", !showUi && "cursor-none")}>
       <video ref={videoRef} className="size-full bg-black object-contain" playsInline crossOrigin="use-credentials" onClick={(e) => { e.stopPropagation(); toggle(); }} onDoubleClick={toggleFull}>
         {info?.subtitles.map((s) => (
-          <track key={s.id} kind="subtitles" label={s.label} srcLang={s.language?.slice(0, 2) ?? "und"} src={`/api/subtitles/${s.id}`} />
+          <track key={`${s.id}:${subRev[s.id] ?? 0}`} kind="subtitles" label={s.label} srcLang={s.language?.slice(0, 2) ?? "und"} src={`/api/subtitles/${s.id}`} />
         ))}
       </video>
+
+      {(() => {
+        const g = info?.subtitles.find((s) => s.auto && s.status === "generating");
+        if (!g || !showUi) return null;
+        const shown = info!.subtitles[subIndex]?.id === g.id;
+        return (
+          <button onClick={(e) => { e.stopPropagation(); if (!shown) setSubIndex(info!.subtitles.indexOf(g)); }} data-player-ui className="absolute right-4 top-20 z-10 flex items-center gap-2 rounded-full border border-violet-400/30 bg-black/70 px-3 py-1.5 text-xs backdrop-blur" aria-label="Automatic subtitles are being generated">
+            <Sparkles className="size-3.5 text-violet-300" /> AI subtitles {Math.round((g.progress ?? 0) * 100)}%{!shown && <span className="font-semibold text-violet-300">· show</span>}
+          </button>
+        );
+      })()}
 
       {busy && !error && <div className="pointer-events-none absolute inset-0 flex items-center justify-center"><Loader2 className="size-14 animate-spin text-white/90 drop-shadow" /></div>}
 
@@ -380,8 +434,23 @@ export function Player({ fileId, torrent = false }: { fileId: string; torrent?: 
                   {info.next && <IconBtn label="Next episode" onClick={() => setNextIn(0)}><SkipForward className="size-6" /></IconBtn>}
                   <MenuBtn icon={<Subtitles className="size-6" />} label="Subtitles" open={menu === "subs"} onToggle={() => setMenu(menu === "subs" ? null : "subs")} active={subIndex >= 0}>
                     <MenuItem checked={subIndex < 0} onClick={() => { setSubIndex(-1); setMenu(null); }}>Off</MenuItem>
-                    {info.subtitles.map((s, i) => <MenuItem key={s.id} checked={subIndex === i} onClick={() => { setSubIndex(i); setMenu(null); }}>{s.label}</MenuItem>)}
-                    {!info.subtitles.length && <p className="px-4 py-2 text-xs text-white/50">No subtitles available</p>}
+                    {info.subtitles.map((s, i) => (
+                      <MenuItem key={s.id} checked={subIndex === i} onClick={() => { setSubIndex(i); setMenu(null); }}>
+                        {s.label}
+                        {s.auto && s.status === "generating" && <span className="ml-2 text-xs text-violet-300">generating {Math.round((s.progress ?? 0) * 100)}%</span>}
+                        {s.auto && s.status === "failed" && <span className="ml-2 text-xs text-amber-300" title={s.note}>failed</span>}
+                      </MenuItem>
+                    ))}
+                    {!info.subtitles.length && !info.ai?.mayStart && <p className="px-4 py-2 text-xs text-white/50">No subtitles available</p>}
+                    {!torrent && info.ai?.mayStart && (
+                      <div className="border-t border-white/10 py-1">
+                        <p className="px-4 pt-1 text-[11px] font-semibold uppercase tracking-wide text-white/50">Generate with AI</p>
+                        <button disabled={aiBusy} onClick={() => void startAi(false)} className="flex w-full items-center gap-2 whitespace-nowrap px-4 py-2 text-left text-violet-300 hover:bg-white/10 disabled:opacity-50"><Sparkles className="size-4" /> Spoken language</button>
+                        <button disabled={aiBusy} onClick={() => void startAi(true)} className="flex w-full items-center gap-2 whitespace-nowrap px-4 py-2 text-left text-violet-300 hover:bg-white/10 disabled:opacity-50"><Languages className="size-4" /> Translate to English</button>
+                        {aiMsg && <p role="alert" className="max-w-56 whitespace-normal px-4 py-1 text-xs text-red-300">{aiMsg}</p>}
+                      </div>
+                    )}
+                    {!torrent && !info.ai?.available && !info.subtitles.some((s) => s.auto) && info.ai?.reason && !info.subtitles.length && <p className="max-w-56 whitespace-normal px-4 py-2 text-[11px] text-white/40">{info.ai.reason}</p>}
                     {info.canFindSubtitles && !torrent && (
                       <button onClick={() => { videoRef.current?.pause(); setMenu(null); setFinder(true); }} className="flex w-full items-center gap-2 whitespace-nowrap border-t border-white/10 px-4 py-2 text-left text-violet-300 hover:bg-white/10"><Search className="size-4" /> Find online…</button>
                     )}

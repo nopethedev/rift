@@ -12,7 +12,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!sub) return new Response("Not found", { status: 404 });
   try {
     return new Response(await readFile(sub.path), {
-      headers: { "content-type": "text/vtt; charset=utf-8", "cache-control": "private, max-age=3600" },
+      headers: { "content-type": "text/vtt; charset=utf-8", "cache-control": sub.status === "generating" ? "private, no-store" : "private, max-age=3600" },
     });
   } catch {
     return new Response("Subtitle file missing", { status: 404 });

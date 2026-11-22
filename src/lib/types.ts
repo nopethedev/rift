@@ -43,7 +43,13 @@ export const AVATAR_ICONS = ["smile", "ghost", "rocket", "cat", "bot", "crown", 
 export const AVATAR_COLORS = ["violet", "rose", "amber", "emerald", "sky", "fuchsia", "orange", "teal"] as const;
 
 export interface PlayerAudioTrack { index: number; codec: string; language?: string; title?: string; channels?: number; default?: boolean }
-export interface PlayerSubtitle { id: string; label: string; language?: string; isDefault: boolean }
+export interface PlayerSubtitle {
+  id: string; label: string; language?: string; isDefault: boolean;
+  /** Automatic (AI) subtitles are written while they are generated. */
+  auto?: boolean; status?: "ready" | "generating" | "failed"; progress?: number; note?: string;
+}
+/** Automatic subtitle availability for the player. */
+export interface PlayerAi { available: boolean; reason?: string; mayStart: boolean }
 
 /** Payload from GET /api/media/:id/info used to bootstrap the player. */
 export interface PlayerInfo {
@@ -62,4 +68,5 @@ export interface PlayerInfo {
   backPath: string;
   /** Admin with OpenSubtitles configured: the player offers "Find online…". */
   canFindSubtitles?: boolean;
+  ai?: PlayerAi;
 }

@@ -7,6 +7,7 @@ import type { WorkerHealth } from "../shared/worker-protocol";
 import type { WorkerConfig } from "./config";
 import { HttpError, SESSION_ID_RE, validateStartRequest, type SessionManager } from "./sessions";
 import { handleMusic, type MusicService } from "./music/routes";
+import { handleWhisper, type WhisperService } from "./whisper/routes";
 
 export interface ServerDeps {
   cfg: WorkerConfig;
@@ -14,6 +15,7 @@ export interface ServerDeps {
   ffmpegVersion: string;
   hwaccels: string[];
   music?: MusicService;
+  whisper?: WhisperService;
 }
 
 const MAX_BODY = 256 * 1024;
@@ -131,6 +133,10 @@ export function createServer(deps: ServerDeps): http.Server {
       throw new HttpError(401, "unauthorized");
     }
 
+    if (parts[0] === "whisper") {
+      if (!deps.whisper) throw new HttpError(503, "subtitle generation is not running");
+      return handleWhisper(deps.whisper, req, res, parts, { readJson, sendJson });
+    }
     if (parts[0] === "music") {
       if (!deps.music) throw new HttpError(503, "music module is not running");
       return handleMusic(deps.music, req, res, parts, { readJson, sendJson });

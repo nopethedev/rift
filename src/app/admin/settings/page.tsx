@@ -12,8 +12,11 @@ type S = {
   torrentSearchProviders: string[]; torznabUrl: string; torznabApiKey: string; sessionDays: number;
   onDemandMaxStreams: number; onDemandAccess: "admins" | "everyone";
   opensubtitlesApiKey: string; opensubtitlesUsername: string; opensubtitlesPassword: string; subtitleLanguages: string[];
+  whisperEnabled: boolean; whisperAuto: boolean; whisperModel: string; whisperLanguage: string; whisperTranslate: boolean; whisperAccess: "admins" | "everyone";
 };
 interface Resp { settings: S; ffmpeg: { ffmpeg: string | null; ffprobe: string | null; worker: { hwaccels: string[] } | null } }
+
+const WHISPER_LANGS: [string, string][] = [["en", "English"], ["es", "Spanish"], ["fr", "French"], ["de", "German"], ["it", "Italian"], ["pt", "Portuguese"], ["nl", "Dutch"], ["ru", "Russian"], ["pl", "Polish"], ["tr", "Turkish"], ["ar", "Arabic"], ["hi", "Hindi"], ["ja", "Japanese"], ["ko", "Korean"], ["zh", "Chinese"], ["sv", "Swedish"], ["uk", "Ukrainian"], ["id", "Indonesian"]];
 
 export default function SettingsPage() {
   const { data, loading } = usePoll<Resp>("/api/admin/settings");
@@ -27,6 +30,7 @@ export default function SettingsPage() {
   const [osBusy, setOsBusy] = useState(false);
   useEffect(() => { if (data && !s) { setS(data.settings); setLadderText(data.settings.transcodeLadder.join(", ")); setLangText(data.settings.subtitleLanguages.join(", ")); } }, [data, s]);
 
+  const { data: ai } = usePoll<{ installed?: boolean; error?: string; running: number; queued: number }>("/api/admin/subtitles/ai");
   const set = <K extends keyof S>(k: K, v: S[K]) => setS((cur) => (cur ? { ...cur, [k]: v } : cur));
 
   const langList = () => { const l = langText.split(/[ ,]+/).map((x) => x.trim().toLowerCase()).filter((x) => /^[a-z]{2,3}(-[a-z]{2,4})?$/.test(x)); return l.length ? l : ["en"]; };
@@ -165,6 +169,37 @@ export default function SettingsPage() {
             {osTest && <span className={`text-sm ${osTest.ok ? "text-emerald-300" : "text-red-300"}`}>{osTest.text}</span>}
           </div>
           <p className="text-xs text-muted">Downloads need the account login; free accounts have a small daily quota. Admins can add subtitles from Media → title → file, or from the player&apos;s subtitle menu.</p>
+        </Card>
+
+        <Card className="space-y-4">
+          <h2 className="font-semibold">Automatic subtitles · Whisper</h2>
+          <p className="text-xs text-muted">Generates subtitles from the film&apos;s own audio with OpenAI Whisper, running on the worker&apos;s CPU. Nothing leaves your server. Cues appear while it works (it starts at the viewer&apos;s position), so you can watch with subtitles after a few seconds.</p>
+          {ai && (ai.error && !("installed" in ai)
+            ? <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-200">Worker unreachable: {ai.error}</p>
+            : ai.installed
+              ? <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">Speech engine ready on the worker · {ai.running} running, {ai.queued} waiting. The model downloads once on first use (about 40 MB for tiny).</p>
+              : <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{ai.error ?? "The speech engine is not installed on the worker."}</p>)}
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-violet-500" checked={s.whisperEnabled} onChange={(e) => set("whisperEnabled", e.target.checked)} /> Enable automatic subtitles</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-violet-500" checked={s.whisperAuto} disabled={!s.whisperEnabled} onChange={(e) => set("whisperAuto", e.target.checked)} /> Generate automatically when a title without subtitles is played</label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Select label="Model" value={s.whisperModel} disabled={!s.whisperEnabled} onChange={(e) => set("whisperModel", e.target.value)}>
+              <option value="Xenova/whisper-tiny">Tiny (fastest, ~40 MB) · recommended</option>
+              <option value="Xenova/whisper-tiny.en">Tiny, English only</option>
+              <option value="Xenova/whisper-base">Base (better, ~80 MB)</option>
+              <option value="Xenova/whisper-base.en">Base, English only</option>
+              <option value="Xenova/whisper-small">Small (best here, ~250 MB, slow on weak CPUs)</option>
+              <option value="Xenova/whisper-small.en">Small, English only</option>
+            </Select>
+            <Select label="Spoken language" value={s.whisperLanguage} disabled={!s.whisperEnabled} onChange={(e) => set("whisperLanguage", e.target.value)}>
+              <option value="auto">Detect automatically</option>
+              {WHISPER_LANGS.map(([c, n]) => <option key={c} value={c}>{n}</option>)}
+            </Select>
+          </div>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-violet-500" checked={s.whisperTranslate} disabled={!s.whisperEnabled} onChange={(e) => set("whisperTranslate", e.target.checked)} /> Translate foreign speech to English (instead of subtitling in the spoken language)</label>
+          <Select label="Who can generate" value={s.whisperAccess} disabled={!s.whisperEnabled} onChange={(e) => set("whisperAccess", e.target.value as S["whisperAccess"])}>
+            <option value="everyone">Everyone with an account</option><option value="admins">Administrators only</option>
+          </Select>
+          <p className="text-xs text-muted">One file is transcribed at a time (a 2-hour film takes roughly 10 to 20 minutes on 4 CPU cores with the tiny model). Tiny is fast but makes mistakes with accents, music and noise; treat it as a good-enough fallback when no real subtitles exist. Save changes to apply.</p>
         </Card>
 
         <Card className="space-y-4">

@@ -9,11 +9,14 @@ import { createServer } from "./server";
 import { SessionManager } from "./sessions";
 import { createMusic } from "./music";
 import type { MusicService } from "./music/routes";
+import { createWhisper } from "./whisper";
+import type { WhisperService } from "./whisper/routes";
 
 export interface RunningWorker {
   server: Server;
   sessions: SessionManager;
   music: MusicService;
+  whisper: WhisperService;
   port: number;
   hwaccels: string[];
   stop(): Promise<void>;
@@ -25,7 +28,8 @@ export async function startWorker(cfg: WorkerConfig = loadConfig()): Promise<Run
   const sessions = new SessionManager(cfg, { hwaccels, toneMapping });
   await sessions.init();
   const music = await createMusic(cfg);
-  const server = createServer({ cfg, sessions, ffmpegVersion: version, hwaccels, music });
+  const whisper = createWhisper(cfg);
+  const server = createServer({ cfg, sessions, ffmpegVersion: version, hwaccels, music, whisper });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(cfg.port, cfg.host, () => resolve());
@@ -40,6 +44,7 @@ export async function startWorker(cfg: WorkerConfig = loadConfig()): Promise<Run
     server,
     sessions,
     music,
+    whisper,
     port,
     hwaccels,
     stop() {
@@ -48,6 +53,7 @@ export async function startWorker(cfg: WorkerConfig = loadConfig()): Promise<Run
         server.closeAllConnections();
         await sessions.shutdown();
         await music.stop();
+        await whisper.stop();
       })();
       return stopping;
     },

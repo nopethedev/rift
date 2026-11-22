@@ -40,6 +40,16 @@ export interface Settings {
   onDemandAccess: "admins" | "everyone";
   /** ISO 639-1 codes searched / auto-fetched, in order of preference. */
   subtitleLanguages: string[];
+  /** Automatic subtitles: speech recognition (OpenAI Whisper, runs on the worker's CPU; nothing leaves your server). */
+  whisperEnabled: boolean;
+  /** Start generating when a title without any subtitles is played. */
+  whisperAuto: boolean;
+  whisperModel: "Xenova/whisper-tiny" | "Xenova/whisper-tiny.en" | "Xenova/whisper-base" | "Xenova/whisper-base.en" | "Xenova/whisper-small" | "Xenova/whisper-small.en";
+  /** "auto" = detect the spoken language. */
+  whisperLanguage: string;
+  /** Automatic subtitles translate foreign speech to English instead of transcribing it. */
+  whisperTranslate: boolean;
+  whisperAccess: "admins" | "everyone";
 
   // ----- Rift Music -----
   /** Where tracks come from: the uploaded library, on-demand sources, or both (library first). */
@@ -100,6 +110,12 @@ export const defaultSettings = (): Settings => ({
   opensubtitlesUsername: "",
   opensubtitlesPassword: "",
   subtitleLanguages: ["en"],
+  whisperEnabled: true,
+  whisperAuto: true,
+  whisperModel: "Xenova/whisper-tiny",
+  whisperLanguage: "auto",
+  whisperTranslate: false,
+  whisperAccess: "everyone",
   onDemandMaxStreams: Math.max(0, Number(process.env.STREAM_MAX_SESSIONS) || 3),
   onDemandAccess: "admins",
   musicSource: "local",

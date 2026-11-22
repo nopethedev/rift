@@ -53,12 +53,17 @@ services:
       SINK_PUBLIC_HOST: ${SINK_PUBLIC_HOST:-worker}
       SINK_PUBLIC_IP: ${SINK_PUBLIC_IP:-}
       SINK_TLS_DIR: /sink
+      # Automatic subtitles (Whisper tiny, CPU): threads per job and jobs at once
+      WHISPER_CACHE_DIR: /whisper-models
+      WHISPER_THREADS: ${WHISPER_THREADS:-4}
+      WHISPER_CONCURRENCY: ${WHISPER_CONCURRENCY:-1}
     volumes:
       # Media must be mounted at the same path as in the web container.
       - ${MEDIA_PATH:-./media}:/media:ro
       - transcode:/transcode
       - music-cache:/music-cache
       - sink-tls:/sink
+      - whisper-models:/whisper-models
     labels: ["com.centurylinklabs.watchtower.enable=true"]
     # Hardware acceleration (uncomment what applies):
     # devices: ["/dev/dri:/dev/dri"]          # VAAPI / Intel QSV
@@ -126,6 +131,7 @@ volumes:
   caddy-data:
   music-cache:
   sink-tls:
+  whisper-models:
   lavalink-config:
   lavalink-trust:
   lavalink-plugins:
