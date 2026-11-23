@@ -32,7 +32,7 @@ function Seek({ className }: { className?: string }) {
 
 function StatusLine({ className }: { className?: string }) {
   const { play, capture, error, loading } = useMusic();
-  if (error) return <p role="alert" className={clsx("flex items-center gap-1.5 truncate text-xs text-amber-300", className)}><AlertTriangle className="size-3.5 shrink-0" />{error}</p>;
+  if (error) return <p role="alert" title={error} className={clsx("flex items-start gap-1.5 text-xs leading-snug text-amber-300", className)}><AlertTriangle className="mt-px size-3.5 shrink-0" /><span className="line-clamp-4 min-w-0 break-words">{error}</span></p>;
   if (loading) return <p className={clsx("flex items-center gap-1.5 text-xs text-muted", className)}><Loader2 className="size-3.5 animate-spin" /> Preparing…</p>;
   if (play?.kind === "ondemand" && capture && capture.state !== "ready") {
     const label = capture.state === "resolving" ? "Finding the right recording…" : capture.state === "queued" ? "Waiting for a download slot…" : `Fetching audio… ${Math.round(capture.progress * 100)}%`;
@@ -73,7 +73,7 @@ export function PlayerBar() {
           </button>
           <div className="hidden min-w-0 flex-col gap-0.5 md:flex"><Controls /><Seek /></div>
           <div className="hidden items-center justify-end gap-2 md:flex">
-            <StatusLine className="max-w-60" />
+            <StatusLine className="max-w-72" />
             <CurrentHeart />
             <button aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted(!muted)} className="text-white/70 hover:text-white">{muted || volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}</button>
             <input type="range" aria-label="Volume" className="rift-range w-24" min={0} max={1} step={0.02} value={muted ? 0 : volume} onChange={(e) => { setMuted(false); setVolume(Number(e.target.value)); }} style={{ ["--track" as string]: `linear-gradient(90deg,#fff ${(muted ? 0 : volume) * 100}%,#ffffff33 ${(muted ? 0 : volume) * 100}%)` }} />
