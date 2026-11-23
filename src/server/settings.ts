@@ -136,7 +136,7 @@ export const defaultSettings = (): Settings => ({
   musicMaxDownloads: 2,
   musicOnDemandAccess: "everyone",
   musicRightsAttested: false,
-  musicLicensePolicy: "licensed-only",
+  musicLicensePolicy: "attested", // only takes effect once the admin has agreed (musicRightsAttested)
   musicSearchProviders: ["soundcloud", "youtube"],
   musicLibraryDirs: [path.join(env.mediaDir, "music")],
   musicUploadDir: path.join(env.mediaDir, "music", "uploads"),

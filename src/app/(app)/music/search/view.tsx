@@ -61,7 +61,6 @@ export function SearchView() {
           )}
           {od.items.map((c) => <TrackRow key={c.sourceId} item={candidateRow(c)} onPlay={() => playItems([candidateRow(c).input], { startIndex: 0 })} active={current?.candidate?.sourceId === c.sourceId} />)}
           {!od.loading && !od.error && !od.items.length && <p className="text-sm text-muted">No results from the enabled sources.</p>}
-          {!od.loading && !!od.items.length && <p className="mt-2 text-xs text-muted">Playback checks the source&apos;s licence first; tracks that can&apos;t be streamed legally on this server will report why.</p>}
         </>
       )}
     </div>

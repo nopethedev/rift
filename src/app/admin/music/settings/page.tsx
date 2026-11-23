@@ -72,10 +72,13 @@ export default function MusicSettingsPage() {
           </Select>
           {onDemand && (
             <div className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
-              {check("I confirm I may download and stream audio from the sources enabled below", "musicRightsAttested", "On-demand playback stays switched off until this is ticked. Only use sources that allow it (your own content, public domain, Creative Commons, or licensed services). You are responsible for what passes through your server.")}
+              <label className="flex items-start gap-3 text-sm">
+                <input type="checkbox" checked={s.musicRightsAttested} onChange={(e) => setS({ ...s, musicRightsAttested: e.target.checked, ...(e.target.checked ? { musicLicensePolicy: "attested" as const } : {}) })} className="mt-1 size-4 accent-violet-500" />
+                <span><span className="font-medium">I agree: I have the rights to download and stream audio from the sources I enable</span><span className="block text-muted">Ticking this switches on-demand playback on for any result (no per-track licence check). It stays off until you agree. You are responsible for what passes through your server.</span></span>
+              </label>
               <Select label="Licence policy (yt-dlp)" value={s.musicLicensePolicy} onChange={(e) => set("musicLicensePolicy", e.target.value as S["musicLicensePolicy"])}>
-                <option value="licensed-only">Open-licensed only: Creative Commons / public domain (recommended)</option>
-                <option value="attested">Any result: I attest to the rights above</option>
+                <option value="licensed-only">Open-licensed only: Creative Commons / public domain (strict)</option>
+                <option value="attested">Any result: I agreed to the rights above</option>
               </Select>
               <p className="text-xs text-muted">With &ldquo;open-licensed only&rdquo; each result&apos;s licence is read from the source and anything else is refused. Lavalink cannot report licences, so it only plays the source types you allow under Lavalink below.</p>
             </div>
