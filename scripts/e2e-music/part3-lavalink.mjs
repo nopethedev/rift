@@ -30,6 +30,13 @@ const a1 = await (await api.get("/api/music/search/ondemand?q=" + encodeURICompo
 check("auto engine: Lavalink is tried first and wins when it has results", a1.candidates?.[0]?.engine === "lavalink", JSON.stringify(a1).slice(0, 160));
 const a2 = await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent("alpha track"))).json();
 check("auto engine: what Lavalink cannot find comes from yt-dlp", a2.candidates?.[0]?.engine === "ytdlp", JSON.stringify(a2).slice(0, 160));
+check("auto engine: both sources are searched and reported (Lavalink first)", a1.sources?.map((x) => x.engine).join() === "lavalink,ytdlp" && a1.sources.every((x) => x.ok), JSON.stringify(a1.sources));
+check("auto engine: results from the two sources are merged, no duplicates", new Set(a1.candidates.map((c) => c.sourceId)).size === a1.candidates.length && a2.candidates.every((c) => c.engine === "ytdlp" || c.engine === "lavalink") && a2.sources?.length === 2, JSON.stringify(a2.sources));
+// one source down must not hide the other: point the node at nothing, yt-dlp still answers and the UI is told why
+await put({ musicLavalinkNodes: [{ ...node, id: "dead", url: "http://127.0.0.1:9" }] });
+const dead = await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent("alpha track"))).json();
+check("auto engine: a dead Lavalink node doesn't stop yt-dlp results, and is reported", dead.candidates?.[0]?.engine === "ytdlp" && dead.sources?.find((x) => x.engine === "lavalink")?.ok === false, JSON.stringify(dead.sources));
+await put({ musicLavalinkNodes: [node] });
 await put({ musicEngine: "lavalink" });
 const cands = [];
 for (const u of URLS) cands.push((await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent(u))).json()).candidates[0]);

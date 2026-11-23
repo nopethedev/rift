@@ -8,6 +8,7 @@ import { z } from "zod";
 import { AUDIO_MIME, type AudioFormat, type MusicStats } from "../../shared/music-protocol";
 import { BusyError, ffmpegArgs, type MusicCache } from "./cache";
 import { EngineError, engineChain, type Engine } from "./engines/types";
+import { searchAll } from "./engines/search";
 import { ytdlpVersion } from "./engines/ytdlp";
 import { LavalinkNode, type LavalinkPool } from "./lavalink";
 import { HttpError } from "../sessions";
@@ -93,16 +94,8 @@ export async function handleMusic(svc: MusicService, req: http.IncomingMessage, 
     }
     if (method === "POST" && sub === "search") {
       const b = z.object({ cfg: cfgSchema, q: z.string().min(1).max(200), limit: z.number().int().min(1).max(25).default(10) }).parse(await h.readJson(req));
-      // Same chain as playback: the first engine that answers with results wins (auto: Lavalink, then yt-dlp).
-      let last: unknown;
-      for (const engine of engineChain(b.cfg, svc.engines)) {
-        try {
-          const candidates = await engine.search(b.q, b.cfg, b.limit);
-          if (candidates.length) return h.sendJson(res, 200, { candidates, engine: engine.id });
-        } catch (e) { last = e; }
-      }
-      if (last) throw last;
-      return h.sendJson(res, 200, { candidates: [] });
+      // Every configured source is searched at once (auto: Lavalink and yt-dlp) and the answers are merged.
+      return h.sendJson(res, 200, await searchAll(engineChain(b.cfg, svc.engines), b.q, b.cfg, b.limit));
     }
     if (method === "POST" && sub === "resolve") {
       // Resolve only (no download): which recordings would be used for this song?

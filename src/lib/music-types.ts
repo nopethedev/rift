@@ -5,6 +5,8 @@ export interface TrackDTO {
 }
 export interface AlbumDTO { albumKey: string; album: string; artist: string; year: number | null; tracks: number; coverUrl: string | null }
 export interface ArtistDTO { artist: string; tracks: number; coverUrl: string | null }
+/** How one on-demand source did for a search (so the UI can say "Lavalink is down" while still showing yt-dlp results). */
+export interface SourceReport { engine: "ytdlp" | "lavalink"; ok: boolean; count: number; error?: string }
 export interface Candidate {
   engine: "ytdlp" | "lavalink"; sourceId: string; title: string; artist: string; durationSec: number; url: string; score: number; license?: string; artworkUrl?: string; sourceName?: string;
 }

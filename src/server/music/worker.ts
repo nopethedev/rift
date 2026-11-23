@@ -22,7 +22,7 @@ export const musicWorker = {
   release: (r: ReleaseRequest) => call<{ ok: true }>("release", r),
   ping: (holder: string, ttlSec?: number) => call<{ held: number }>("ping", { holder, ttlSec }),
   status: (keys: string[]) => call<Record<string, EntryStatus>>("status", { keys }),
-  search: (cfg: MusicConfig, q: string, limit = 10) => call<{ candidates: Candidate[] }>("search", { cfg, q, limit }, 60_000),
+  search: (cfg: MusicConfig, q: string, limit = 10) => call<{ candidates: Candidate[]; engines: { engine: "ytdlp" | "lavalink"; ok: boolean; count: number; error?: string }[] }>("search", { cfg, q, limit }, 60_000),
   resolve: (cfg: MusicConfig, query: TrackQuery) => call<{ candidates: Candidate[] }>("resolve", { cfg, query }, 90_000),
   stats: (cfg: MusicConfig) => call<MusicStats>("stats", { cfg }, 15_000),
   clear: (cfg: MusicConfig) => call<{ removed: number }>("clear", { cfg }),

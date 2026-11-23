@@ -6,7 +6,7 @@ import { api, Input } from "@/components/ui";
 import { AlbumCard, ArtistCard, candidateRow, Empty, Grid, SectionTitle, TrackRow, trackRow, type RowItem } from "@/components/music/parts";
 import { CatAlbumCard, CatArtistCard, ShelfRow } from "@/components/music/cards";
 import { useMusic } from "@/components/music/player-provider";
-import { catInput, type AlbumDTO, type ArtistDTO, type Candidate, type CatAlbum, type CatArtist, type CatTrack, type TrackDTO } from "@/lib/music-types";
+import { catInput, type AlbumDTO, type ArtistDTO, type Candidate, type SourceReport, type CatAlbum, type CatArtist, type CatTrack, type TrackDTO } from "@/lib/music-types";
 
 export function SearchView() {
   const router = useRouter();
@@ -16,7 +16,7 @@ export function SearchView() {
   useEffect(() => setQ(urlQ), [urlQ]); // the top-bar search box drives the URL
   const [lib, setLib] = useState<{ tracks: TrackDTO[]; albums: AlbumDTO[]; artists: ArtistDTO[] } | null>(null);
   const [cat, setCat] = useState<{ artists: CatArtist[]; albums: CatAlbum[]; tracks: CatTrack[] } | null>(null);
-  const [od, setOd] = useState<{ loading: boolean; items: Candidate[]; error: string } | null>(null);
+  const [od, setOd] = useState<{ loading: boolean; items: Candidate[]; error: string; sources?: SourceReport[] } | null>(null);
   const { playItems, current, play, mode } = useMusic();
 
   useEffect(() => {
@@ -29,7 +29,7 @@ export function SearchView() {
       api<NonNullable<typeof lib>>(`/api/music/search?q=${encodeURIComponent(term)}`).then((r) => live && setLib(r)).catch(() => live && setLib({ tracks: [], albums: [], artists: [] }));
       if (mode?.onDemand) {
         setOd({ loading: true, items: [], error: "" });
-        api<{ candidates: Candidate[] }>(`/api/music/search/ondemand?q=${encodeURIComponent(term)}`).then((r) => live && setOd({ loading: false, items: r.candidates, error: "" })).catch((e: Error) => live && setOd({ loading: false, items: [], error: e.message }));
+        api<{ candidates: Candidate[]; sources?: SourceReport[] }>(`/api/music/search/ondemand?q=${encodeURIComponent(term)}`).then((r) => live && setOd({ loading: false, items: r.candidates, error: "", sources: r.sources })).catch((e: Error) => live && setOd({ loading: false, items: [], error: e.message }));
       }
     }, 450);
     return () => { live = false; clearTimeout(t); };
@@ -54,6 +54,7 @@ export function SearchView() {
           <SectionTitle><span className="flex items-center gap-2"><CloudDownload className="size-5 text-violet-300" /> On-demand</span></SectionTitle>
           {od.loading && <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="size-4 animate-spin" /> Searching sources…</p>}
           {od.error && <p role="alert" className="text-sm text-amber-300">{od.error}</p>}
+          {od.sources?.filter((x) => !x.ok).map((x) => <p key={x.engine} role="status" className="mb-2 text-xs text-amber-300">{x.engine === "lavalink" ? "Lavalink" : "yt-dlp"} couldn&apos;t be searched{x.error ? `: ${x.error}` : ""}</p>)}
           {od.items.map((c) => <TrackRow key={c.sourceId} item={candidateRow(c)} onPlay={() => playItems([candidateRow(c).input], { startIndex: 0 })} active={current?.candidate?.sourceId === c.sourceId} />)}
           {!od.loading && !od.error && !od.items.length && <p className="text-sm text-muted">No results from the enabled sources.</p>}
           {!od.loading && !!od.items.length && <p className="mt-2 text-xs text-muted">Playback checks the source&apos;s licence first; tracks that can&apos;t be streamed legally on this server will report why.</p>}

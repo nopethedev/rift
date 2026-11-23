@@ -222,7 +222,7 @@ export function ArtistCard({ a }: { a: ArtistDTO }) {
 
 export const trackRow = (t: TrackDTO, o: Partial<RowItem> = {}): RowItem => ({ key: t.id, input: { trackId: t.id }, title: t.title, artist: t.artist, album: t.album, durationSec: t.durationSec, cover: t.coverUrl, trackId: t.id, ...o });
 export const candidateRow = (c: Candidate): RowItem => ({
-  key: c.sourceId, title: c.title, artist: c.artist || c.sourceName || "", durationSec: c.durationSec, cover: c.artworkUrl ?? null, note: c.sourceName ?? "on-demand",
+  key: c.sourceId, title: c.title, artist: c.artist || c.sourceName || "", durationSec: c.durationSec, cover: c.artworkUrl ?? null, note: [c.sourceName, c.engine === "lavalink" ? "Lavalink" : "yt-dlp"].filter(Boolean).join(" · "),
   input: { title: c.title, artist: c.artist, durationSec: c.durationSec, artworkUrl: c.artworkUrl ?? null, candidate: c },
 });
 
