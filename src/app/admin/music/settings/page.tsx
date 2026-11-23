@@ -13,7 +13,7 @@ type S = {
   musicLibraryDirs: string[]; musicUploadDir: string; musicLavalinkNodes: Node[]; musicLavalinkAllowedSources: string[]; musicLavalinkPlugins: { dependency: string; repository: string }[];
   spotifyClientId: string; spotifyClientSecret: string;
 };
-type Test = { ok: boolean; version?: string; sources?: string[]; plugins?: { name: string; version: string }[]; sinkReady?: boolean; error?: string };
+type Test = { ok: boolean; version?: string; sources?: string[]; plugins?: { name: string; version: string }[]; sinkReady?: boolean; bridge?: { ok: boolean; error?: string }; error?: string };
 
 export default function MusicSettingsPage() {
   const { data, loading } = usePoll<{ settings: S }>("/api/admin/music/settings");
@@ -129,7 +129,7 @@ export default function MusicSettingsPage() {
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
                     <Button size="sm" variant="secondary" loading={t === "busy"} onClick={() => test(n)}>Test connection</Button>
-                    {t && t !== "busy" && (t.ok ? <span className="text-emerald-300">Lavalink {t.version} · sources: {t.sources?.join(", ")}{t.plugins?.length ? ` · plugins: ${t.plugins.map((p) => p.name).join(", ")}` : ""} · bridge {t.sinkReady ? "ready" : "not running"}</span> : <span className="text-red-300">{t.error}</span>)}
+                    {t && t !== "busy" && (t.ok ? <span className="text-emerald-300">Lavalink {t.version} · sources: {t.sources?.join(", ")}{t.plugins?.length ? ` · plugins: ${t.plugins.map((p) => p.name).join(", ")}` : ""} · bridge {t.sinkReady ? "ready" : "not running"}{t.bridge && (t.bridge.ok ? <span> · node → bridge: <b>works</b></span> : <span className="block text-amber-300">This node can&apos;t play into Rift: {t.bridge.error}</span>)}</span> : <span className="text-red-300">{t.error}</span>)}
                   </div>
                 </div>
               );

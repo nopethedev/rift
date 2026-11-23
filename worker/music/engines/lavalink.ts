@@ -103,7 +103,14 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
       const cleanup = () => { node.off("event", onEvent); void node.destroy(ticket.guildId); };
       done.then(cleanup, cleanup);
       try {
-        try { await node.play(ticket.guildId, c.encoded, ticket.voice); } catch (e) {
+        try {
+          try { await node.play(ticket.guildId, c.encoded, ticket.voice); } catch (e) {
+            // A one-off "Failed to connect to voice server" happens (busy node, two connections at once): try once more.
+            if (!/voice server|voice connection/i.test((e as Error).message)) throw e;
+            await new Promise((r) => setTimeout(r, 800));
+            await node.play(ticket.guildId, c.encoded, ticket.voice);
+          }
+        } catch (e) {
           // The node accepted the request but could not open its voice connection to our bridge: it can't reach the worker
           // (a hosted / remote node usually can't: TCP 4443 + UDP 4444 on this machine) or doesn't trust the certificate.
           if (/voice server|voice connection/i.test((e as Error).message)) throw new EngineError(`The Lavalink node "${node.cfg.name ?? node.cfg.id}" can't connect to Rift's audio bridge. A node on another network (free hosted nodes) can search but can't play into this server; use the bundled node or yt-dlp. (${(e as Error).message.slice(0, 160)})`, "unavailable");

@@ -133,7 +133,18 @@ export async function handleMusic(svc: MusicService, req: http.IncomingMessage, 
         const info = await n.info();
         await n.waitReady(6000);
         const sink = svc.sink();
-        return h.sendJson(res, 200, { ok: true, version: info.version, sources: info.sourceManagers, plugins: info.plugins, sinkReady: !!sink, sinkEndpoint: sink?.endpoint });
+        // Can the node actually open a voice connection to the audio bridge? (Playing needs it; searching does not.)
+        let bridge: { ok: boolean; error?: string } = { ok: false, error: "The audio bridge is not running on the worker" };
+        if (sink) {
+          const ticket = sink.createTicket();
+          try {
+            await n.probeVoice(ticket.guildId, ticket.voice);
+            await Promise.race([ticket.connected, new Promise((_, rej) => setTimeout(() => rej(new Error("The node never connected to the bridge")), 6000).unref())]);
+            bridge = { ok: true };
+          } catch (e) { bridge = { ok: false, error: (e as Error).message.slice(0, 220) }; }
+          finally { ticket.close(); void n.destroy(ticket.guildId); }
+        }
+        return h.sendJson(res, 200, { ok: true, version: info.version, sources: info.sourceManagers, plugins: info.plugins, sinkReady: !!sink, sinkEndpoint: sink?.endpoint, bridge });
       } catch (e) {
         return h.sendJson(res, 200, { ok: false, error: (e as Error).message });
       } finally { n.close(); }

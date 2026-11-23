@@ -101,6 +101,12 @@ export class LavalinkNode extends EventEmitter {
     await this.rest("PATCH", `/v4/sessions/${sid}/players/${guildId}?noReplace=false`, { track: { encoded }, voice, volume: 100, paused: false });
   }
 
+  /** Sets up a voice connection only (no track) so a test can tell whether this node can reach and trust the audio bridge. */
+  async probeVoice(guildId: string, voice: { token: string; endpoint: string; sessionId: string; channelId: string }) {
+    const sid = await this.waitReady();
+    await this.rest("PATCH", `/v4/sessions/${sid}/players/${guildId}?noReplace=false`, { voice });
+  }
+
   async destroy(guildId: string) {
     if (!this.sessionId) return;
     await this.rest("DELETE", `/v4/sessions/${this.sessionId}/players/${guildId}`).catch(() => {});
