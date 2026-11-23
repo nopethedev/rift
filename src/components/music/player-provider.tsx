@@ -238,7 +238,19 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       void start({ itemId: p.item.id }, offset.current + (audio.current?.currentTime ?? 0));
       return;
     }
-    if (!skipFrom(p.item.id, p.item.title, "the audio could not be played")) { setError(`Couldn't play “${p.item.title}”.`); setPlaying(false); }
+    // Out of retries: ask the worker why (source refused, no match, ffmpeg missing, ...) so the message says more than "couldn't play".
+    void (async () => {
+      let why = "the audio could not be played";
+      if (p.key) {
+        try {
+          const s = await api<EntryStatus>(`/api/music/od/${p.key}/status`);
+          if (s.error) why = s.error;
+          else if (s.state === "ready" && audio.current?.error?.code === 4) why = "your browser can't decode this format";
+        } catch { /* worker restarted / entry cleaned up */ }
+      }
+      if (playRef.current?.item.id !== p.item.id) return; // the user moved on meanwhile
+      if (!skipFrom(p.item.id, p.item.title, why)) { setError(`Couldn't play “${p.item.title}”: ${why}.`); setPlaying(false); }
+    })();
   };
 
   // ----- on-demand capture status + heartbeat -----
