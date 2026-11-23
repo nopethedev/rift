@@ -38,8 +38,10 @@ const dead = await (await api.get("/api/music/search/ondemand?q=" + encodeURICom
 check("auto engine: a dead Lavalink node doesn't stop yt-dlp results, and is reported", dead.candidates?.[0]?.engine === "ytdlp" && dead.sources?.find((x) => x.engine === "lavalink")?.ok === false, JSON.stringify(dead.sources));
 await put({ musicLavalinkNodes: [node] });
 await put({ musicEngine: "lavalink" });
-const only = await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent("alpha track"))).json();
-check('"Lavalink only": yt-dlp is never searched and every result is from Lavalink', only.sources?.length === 1 && only.sources[0].engine === "lavalink" && (only.candidates ?? []).every((c) => c.engine === "lavalink"), JSON.stringify(only).slice(0, 200));
+const only = await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent(URLS[0]))).json();
+check('"Lavalink only": only Lavalink is searched and every result is from it', only.sources?.length === 1 && only.sources[0].engine === "lavalink" && only.candidates?.length > 0 && only.candidates.every((c) => c.engine === "lavalink"), JSON.stringify(only).slice(0, 200));
+const onlyFail = await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent("alpha track"))).json();
+check('"Lavalink only": what Lavalink cannot find is an error, never silently answered by yt-dlp', !!onlyFail.error && !onlyFail.candidates, JSON.stringify(onlyFail).slice(0, 200));
 const cands = [];
 for (const u of URLS) cands.push((await (await api.get("/api/music/search/ondemand?q=" + encodeURIComponent(u))).json()).candidates[0]);
 const items = cands.map((c, i) => ({ title: `Lava ${i + 1}`, artist: "Bridge", durationSec: 10, candidate: c }));
