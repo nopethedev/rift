@@ -246,11 +246,17 @@ export class MusicCache {
       // A pinned candidate (user picked a search result) belongs to one engine; otherwise walk the engine chain
       // (auto = Lavalink, then yt-dlp): an engine that cannot resolve or deliver hands over to the next one.
       let lastErr = "no candidates";
-      const chain: (Engine | null)[] = entry.pinned ? [null] : engineChain(cfg, this.o.engines);
+      // A pinned pick whose engine can't deliver (e.g. a remote Lavalink node that can't reach the audio bridge) is looked
+      // up again by title + artist on the other engines when the engine is "auto" - the song still plays, from elsewhere.
+      const pin = entry.pinned;
+      const fallbackQuery: TrackQuery | undefined = entry.query ?? (pin ? { title: pin.title, artist: pin.artist, durationSec: pin.durationSec || undefined, allowVariants: true } : undefined);
+      const chain: (Engine | null)[] = pin
+        ? [null, ...(cfg.engine === "auto" ? engineChain(cfg, this.o.engines).filter((e) => e.id !== pin.engine) : [])]
+        : engineChain(cfg, this.o.engines);
       for (const engine of chain) {
         let cands: Candidate[];
         try {
-          cands = entry.pinned ? [entry.pinned] : await this.resolveQuery(entry.query!, cfg, engine!);
+          cands = !engine ? [pin!] : await this.resolveQuery(fallbackQuery!, cfg, engine);
         } catch (e) { lastErr = (e as Error).message; continue; }
         entry.candidates = cands;
         for (const c of cands) {

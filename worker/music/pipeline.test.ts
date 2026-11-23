@@ -207,6 +207,23 @@ describe("MusicCache", () => {
       expect(lava.opens).toEqual(["l:bad"]); // one attempt: "unavailable" skips the engine's remaining candidates
     });
 
+    it("a picked Lavalink result falls back to yt-dlp (by title + artist) when its node can't play it", async () => {
+      lava.down = true;
+      const picked = mk("pickedSong", 2, { engine: "lavalink", sourceId: "l:pickedSong" });
+      const st = await cache.prepare({ cfg: auto(), candidate: picked, holder: "p1", role: "current" });
+      const done = await ready(st.key);
+      expect(done.candidate?.engine).toBe("ytdlp");
+      expect(lava.opens).toEqual(["l:pickedSong"]);
+    });
+
+    it("a picked Lavalink result is NOT re-resolved elsewhere when the engine is Lavalink only", async () => {
+      lava.down = true;
+      const picked = mk("pickedOnly", 2, { engine: "lavalink", sourceId: "l:pickedOnly" });
+      const st = await cache.prepare({ cfg: { ...auto(), engine: "lavalink" }, candidate: picked, holder: "p1", role: "current" });
+      await waitFor(() => cache.status(cache.get(st.key)!).state === "failed");
+      expect(engine.opens).toEqual([]);
+    });
+
     it("uses yt-dlp only when no Lavalink node is configured", async () => {
       const st = await cache.prepare({ cfg: cfgFor({ engine: "auto" }), query: q("noNodes"), holder: "p1", role: "current" });
       const done = await ready(st.key);
