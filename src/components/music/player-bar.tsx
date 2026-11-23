@@ -3,8 +3,9 @@ import { useState } from "react";
 import clsx from "clsx";
 import { AlertTriangle, ChevronDown, CloudDownload, ListMusic, Loader2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Trash2, Volume2, VolumeX, X, Infinity as Auto, ArrowUp, ArrowDown } from "lucide-react";
 import { fmtTime, type QueueItem } from "@/lib/music-types";
-import { Cover, HeartButton } from "./parts";
+import { Cover } from "./parts";
 import { useMusic } from "./player-provider";
+import { ArtistCard, CurrentHeart, SidePanelToggle } from "./side-panel";
 
 function Seek({ className }: { className?: string }) {
   const { position, duration, seek, capture, play } = useMusic();
@@ -27,14 +28,6 @@ function Seek({ className }: { className?: string }) {
       <span className="w-9">{fmtTime(max)}</span>
     </div>
   );
-}
-
-/** Like / unlike whatever is playing now. */
-function CurrentHeart({ className }: { className?: string }) {
-  const { current } = useMusic();
-  if (!current) return null;
-  const input = current.trackId ? { trackId: current.trackId } : { title: current.title, artist: current.artist, album: current.album, durationSec: current.durationSec, artworkUrl: current.artworkUrl };
-  return <HeartButton item={{ input, title: current.title, artist: current.artist }} className={clsx("sm:!opacity-100", className)} />;
 }
 
 function StatusLine({ className }: { className?: string }) {
@@ -84,6 +77,7 @@ export function PlayerBar() {
             <CurrentHeart />
             <button aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted(!muted)} className="text-white/70 hover:text-white">{muted || volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}</button>
             <input type="range" aria-label="Volume" className="rift-range w-24" min={0} max={1} step={0.02} value={muted ? 0 : volume} onChange={(e) => { setMuted(false); setVolume(Number(e.target.value)); }} style={{ ["--track" as string]: `linear-gradient(90deg,#fff ${(muted ? 0 : volume) * 100}%,#ffffff33 ${(muted ? 0 : volume) * 100}%)` }} />
+            <SidePanelToggle />
             <button aria-label="Queue" onClick={() => setOpen(true)} className="relative rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white"><ListMusic className="size-5" />{!!queue?.items.length && <span className="absolute -right-0.5 -top-0.5 rounded-full bg-accent px-1 text-[9px] font-bold">{queue.items.length}</span>}</button>
           </div>
           <div className="md:hidden"><MiniControls /></div>
@@ -150,6 +144,7 @@ export function NowPlaying({ onClose }: { onClose: () => void }) {
             <button aria-pressed={!!queue?.state.autoplay} onClick={() => setAutoplay(!queue?.state.autoplay)} className={clsx("flex items-center gap-1.5 rounded-full px-3 py-1.5", queue?.state.autoplay ? "bg-accent/30 text-white" : "bg-white/10 text-muted")}><Auto className="size-3.5" /> Autoplay {queue?.state.autoplay ? "on" : "off"}</button>
             <div className="flex gap-2 sm:hidden"><MobileToggles /></div>
           </div>
+          <ArtistCard artist={current.artist} className="w-full text-left" />
         </div>
         <div className="min-w-0">
           <div className="mb-2 flex items-center justify-between"><h3 className="font-bold">Queue <span className="text-sm font-normal text-muted">· {items.length}</span></h3><button onClick={() => clearQueue().then(onClose)} className="flex items-center gap-1 text-xs text-muted hover:text-red-300"><Trash2 className="size-3.5" /> Clear</button></div>

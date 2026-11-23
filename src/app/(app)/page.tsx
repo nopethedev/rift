@@ -81,7 +81,7 @@ export default async function HomePage() {
   const sk = <RowSkeleton />;
   return (
     <>
-      <Suspense fallback={<div className="skeleton h-[68vh] w-full !rounded-none sm:h-[80vh]" />}>
+      <Suspense fallback={<div className="skeleton h-[68vh] min-h-[32rem] w-full !rounded-none sm:h-[80vh] sm:min-h-[40rem]" />}>
         <HeroSection kids={profile.isKids} local={local} />
       </Suspense>
       <div className="relative z-10 -mt-16 space-y-8 sm:-mt-24">

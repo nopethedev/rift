@@ -9,6 +9,7 @@ import { api } from "../ui";
 import { Cover } from "./parts";
 import { useMusic } from "./player-provider";
 import { useSaved } from "./saved-provider";
+import { NowPlayingPanel, useSidePanelVisible } from "./side-panel";
 
 interface PL { id: string; name: string; artworkUrl: string | null; count: number }
 
@@ -32,6 +33,7 @@ export function MusicShell({ profile, isAdmin, children }: { profile: { name: st
   const router = useRouter();
   const { current } = useMusic();
   const saved = useSaved();
+  const side = useSidePanelVisible();
   const lists = usePlaylists();
   const [menu, setMenu] = useState(false);
   const [q, setQ] = useState("");
@@ -101,7 +103,9 @@ export function MusicShell({ profile, isAdmin, children }: { profile: { name: st
         </div>
       </aside>
 
-      <main className="md:pl-64 md:pr-2">
+      <NowPlayingPanel />
+
+      <main className={clsx("md:pl-64 md:pr-2", side && "lg:pr-[21rem]")}>
         <div className="min-h-[calc(100dvh-3.5rem)] pt-14 md:mt-0 md:rounded-xl">
           <div className="bg-gradient-to-b from-accent/15 via-surface/60 to-surface/0 px-4 pb-28 pt-5 sm:px-8 md:min-h-[calc(100dvh-4rem)] md:rounded-xl md:pb-24">{children}</div>
         </div>

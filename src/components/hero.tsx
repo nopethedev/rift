@@ -25,7 +25,7 @@ export function Hero({ items }: { items: CardItem[] }) {
   const bg = tmdbImg(it.backdropPath, "original");
 
   return (
-    <header className="relative h-[68vh] min-h-[420px] w-full overflow-hidden sm:h-[80vh]" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+    <header className="relative h-[68vh] min-h-[32rem] w-full overflow-hidden sm:h-[80vh] sm:min-h-[40rem]" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
       <AnimatePresence mode="sync">
         <motion.div key={it.key} initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.9 }} className="absolute inset-0">
           {bg && <img src={bg} alt="" className="size-full object-cover object-top" />}
@@ -33,16 +33,18 @@ export function Hero({ items }: { items: CardItem[] }) {
       </AnimatePresence>
       <div className="absolute inset-0 bg-gradient-to-r from-bg via-bg/50 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-bg to-transparent" />
-      <div className="absolute inset-0 flex items-end pb-20 sm:items-center sm:pb-0">
+      {/* The rows below are pulled up over the bottom of the hero (-mt-16 / sm:-mt-24), so keep the text clear of that
+          strip (plus the fixed navbar on top) and let it centre in what's left instead of running under the rows. */}
+      <div className="absolute inset-0 flex items-end overflow-hidden pb-20 pt-16 sm:items-center sm:pb-28 sm:pt-20">
         <AnimatePresence mode="wait">
-          <motion.div key={it.key} initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.45 }} className="max-w-2xl space-y-4 px-4 sm:px-12">
-            <div className="flex items-center gap-2">
+          <motion.div key={it.key} initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.45 }} className="w-full max-w-2xl space-y-3 px-4 sm:space-y-4 sm:px-12">
+            <div className="flex flex-wrap items-center gap-2">
               {it.available ? <Badge tone="accent"><Library className="size-3" /> In your library</Badge> : <Badge>Discover</Badge>}
               <Badge>{it.type === "tv" ? "Series" : "Movie"}</Badge>
               {it.rating ? <span className="text-sm font-semibold text-emerald-400">{Math.round(it.rating * 10)}% match</span> : null}
               {it.year ? <span className="text-sm text-white/70">{it.year}</span> : null}
             </div>
-            <h1 className="text-4xl font-extrabold leading-tight tracking-tight drop-shadow-lg sm:text-6xl">{it.title}</h1>
+            <h1 className="line-clamp-3 text-balance break-words text-3xl font-extrabold leading-tight tracking-tight drop-shadow-lg sm:text-5xl lg:text-6xl">{it.title}</h1>
             {it.overview && <p className="line-clamp-3 max-w-xl text-sm text-white/85 drop-shadow sm:text-base">{it.overview}</p>}
             <div className="flex flex-wrap items-center gap-3 pt-1">
               {play && (
