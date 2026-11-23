@@ -135,6 +135,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const cancelScheduled = useCallback(() => { if (later.current.timer) clearTimeout(later.current.timer); later.current.timer = null; later.current.run = null; }, []);
   const flash = useCallback((msg: string) => { setError(msg); setTimeout(() => setError((e) => (e === msg ? "" : e)), 7000); }, []);
 
+  const lastSource = useRef<{ key: string; id: string } | null>(null);
   const startRef = useRef<(b: { itemId?: string; dir?: "next" | "prev"; auto?: boolean; forceTranscode?: boolean }, at?: number) => Promise<void>>(async () => {});
 
   /** The song after `id` according to the queue this tab holds (same rules as the server), or null at the end. */
@@ -263,6 +264,13 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         const s = await api<EntryStatus>(`/api/music/od/${key}/status`);
         if (stop) return;
         setCapture(s);
+        // The server moved this song to another recording (the first source stopped mid-way): say so instead of switching silently.
+        const sid = s.candidate?.sourceId;
+        if (sid) {
+          const seen = lastSource.current;
+          if (seen?.key === key && seen.id !== sid && playRef.current?.key === key) flash(`“${playRef.current.item.title}”: the first source stopped, switched to another recording (${s.candidate?.sourceName ?? s.candidate?.engine}).`);
+          lastSource.current = { key, id: sid };
+        }
         if (s.durationSec) setDuration((d) => d || s.durationSec!);
         if (s.state === "ready" && pendingSeek.current !== null) { // a seek waited for the complete file
           const at = pendingSeek.current;
@@ -275,7 +283,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     const t = setInterval(tick, 1000);
     void tick();
     return () => { stop = true; clearInterval(t); };
-  }, [play?.key, capture?.state]);
+  }, [play?.key, capture?.state, flash]);
 
   useEffect(() => {
     if (!mode?.onDemand || !play) return;
