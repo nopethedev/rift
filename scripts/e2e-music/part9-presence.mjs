@@ -74,4 +74,5 @@ await j(await api.delete("/api/presence/settings"));
 check("turning it off revokes the token", (await noAuth.get(`/api/presence/${st.token}`)).status() === 404 && (await j(await api.get("/api/presence/settings"))).body.token === null);
 check("the companion exits when its token is revoked", !!(await until(() => out.join("").includes("revoked"), 15000, 300)), out.join("").slice(-200));
 child.kill();
+await browser.close();
 summary();
