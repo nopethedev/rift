@@ -111,6 +111,10 @@ export async function api<T = any>(url: string, init?: Omit<RequestInit, "body">
     ...init,
     headers: { ...(init?.body !== undefined ? { "content-type": "application/json" } : {}), ...(init?.headers ?? {}) },
     body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+  }).catch((e: unknown) => {
+    // The request never got an answer (offline, server restarting, phone in the background): say so, and let callers tell it from an error reply.
+    if (e instanceof TypeError) throw Object.assign(new Error("Can't reach the server"), { network: true });
+    throw e;
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);

@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../ui";
+import { nextId } from "@/lib/music-queue";
 import { artSrc, type EntryStatus, type ItemInput, MusicMode, PlayInfo, Queue, QueueItem, RepeatMode } from "@/lib/music-types";
 
 interface PlayerCtx {
@@ -45,7 +46,9 @@ export const useMusic = () => {
 };
 
 const withStart = (url: string, at: number) => `${url}${url.includes("?") ? "&" : "?"}start=${Math.floor(at)}`;
-const MAX_SKIPS = 3;
+const MAX_SKIPS = 8; // unplayable songs skipped in a row before giving up
+const MAX_NET_RETRIES = 14; // ~2 minutes of backoff while the server cannot be reached
+const isNetwork = (e: unknown) => !!(e as { network?: boolean }).network;
 
 export function MusicProvider({ children }: { children: React.ReactNode }) {
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -66,6 +69,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const skips = useRef(0);
   const retried = useRef<string | null>(null);
   const reported = useRef<string | null>(null);
+  const later = useRef<{ timer: ReturnType<typeof setTimeout> | null; run: (() => void) | null }>({ timer: null, run: null });
+  const netTries = useRef(0);
   const queueRef = useRef<Queue | null>(null);
   queueRef.current = queue;
   playRef.current = play;
@@ -121,11 +126,41 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     queueMicrotask(sendPresence); // a restarted converted stream = a new position
   }, [sendPresence]);
 
+  /** Runs `fn` after `ms`, or earlier when the connection / tab comes back (see the effect below). One pending action at most. */
+  const schedule = useCallback((fn: () => void, ms: number) => {
+    if (later.current.timer) clearTimeout(later.current.timer);
+    later.current.run = fn;
+    later.current.timer = setTimeout(() => { later.current.timer = null; later.current.run = null; fn(); }, ms);
+  }, []);
+  const cancelScheduled = useCallback(() => { if (later.current.timer) clearTimeout(later.current.timer); later.current.timer = null; later.current.run = null; }, []);
+  const flash = useCallback((msg: string) => { setError(msg); setTimeout(() => setError((e) => (e === msg ? "" : e)), 7000); }, []);
+
+  const startRef = useRef<(b: { itemId?: string; dir?: "next" | "prev"; auto?: boolean; forceTranscode?: boolean }, at?: number) => Promise<void>>(async () => {});
+
+  /** The song after `id` according to the queue this tab holds (same rules as the server), or null at the end. */
+  const after = useCallback((id: string, auto = false): string | null => {
+    const q = queueRef.current;
+    if (!q) return null;
+    return nextId(q.items.map((i, position) => ({ id: i.id, position })), { currentItemId: id, repeat: q.state.repeat }, { auto });
+  }, []);
+  /** Can't play this song: say why and go on with the next one in the queue (a few times in a row at most). */
+  const skipFrom = useCallback((failedId: string, title: string, why: string): boolean => {
+    const q = queueRef.current;
+    const nid = q ? after(failedId) : null; // repeat-one must not loop on a broken song: `auto` stays false
+    if (!nid || nid === failedId || skips.current >= MAX_SKIPS) return false;
+    skips.current++;
+    flash(`Skipped “${title}”: ${why}`);
+    schedule(() => void startRef.current({ itemId: nid }), 700);
+    return true;
+  }, [after, flash, schedule]);
+
   const start = useCallback(async (body: { itemId?: string; dir?: "next" | "prev"; auto?: boolean; forceTranscode?: boolean }, at = 0) => {
+    cancelScheduled();
     setLoading(true);
-    setError("");
+    setError((e) => (e.startsWith("Skipped ") ? e : "")); // the "skipped" note stays while the next song loads (it clears itself)
     try {
       const r = await api<{ play: PlayInfo | null; queue: Queue; ended: boolean }>("/api/music/play", { method: "POST", body: { ...body, caps: caps() } });
+      netTries.current = 0;
       setQueue(r.queue);
       if (r.ended || !r.play) { setPlay(null); setPlaying(false); setCapture(null); audio.current?.pause(); return; }
       reported.current = null;
@@ -135,14 +170,42 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       attach(r.play, at);
     } catch (e) {
       const msg = (e as Error).message;
-      setError(msg);
       setPlaying(false);
-      // An unplayable item (not found, source refused, limit reached...) is skipped, a few times in a row at most.
-      if (body.dir === "next" && skips.current < MAX_SKIPS && !/limit|try again/i.test(msg)) { skips.current++; setTimeout(() => void start({ dir: "next" }), 1200); }
+      if (isNetwork(e)) {
+        // Nothing is wrong with the song: the server could not be reached (offline, restarting, phone in the background). Keep trying
+        // the same request with a growing pause; it is safe to repeat because it names the song (or is the end-of-queue step).
+        if (netTries.current < MAX_NET_RETRIES) {
+          const wait = Math.min(10_000, 1000 * 2 ** Math.min(netTries.current, 4));
+          netTries.current++;
+          setError("Can't reach the server. Retrying…");
+          schedule(() => void startRef.current(body, at), wait);
+        } else { netTries.current = 0; setError("Can't reach the server. Press play to try again."); }
+        return;
+      }
+      // An unplayable item (not found, source refused, ...) is skipped; a limit / busy answer says nothing about this song, so it is shown instead.
+      const failed = body.itemId ? queueRef.current?.items.find((i) => i.id === body.itemId) : undefined;
+      if (failed && !/limit|try again/i.test(msg) && skipFrom(failed.id, failed.title, msg)) return;
+      setError(msg);
     } finally {
       setLoading(false);
     }
-  }, [attach, caps]);
+  }, [attach, caps, cancelScheduled, schedule, skipFrom]);
+  startRef.current = start;
+
+  // The connection (or the tab) came back: do the waiting retry now instead of at the end of its pause.
+  useEffect(() => {
+    const kick = () => { const f = later.current.run; if (!f || (document.visibilityState === "hidden")) return; cancelScheduled(); f(); };
+    window.addEventListener("online", kick);
+    document.addEventListener("visibilitychange", kick);
+    return () => { window.removeEventListener("online", kick); document.removeEventListener("visibilitychange", kick); };
+  }, [cancelScheduled]);
+
+  /** Next song: named explicitly so a retry can never skip one; the server only decides at the end of the queue (autoplay). */
+  const goNext = useCallback((auto: boolean) => {
+    const cur = queueRef.current?.state.currentItemId;
+    const nid = cur ? after(cur, auto) : null;
+    void (nid ? start({ itemId: nid }) : start({ dir: "next", auto }));
+  }, [after, start]);
 
   // ----- audio element events -----
   const onTime = () => {
@@ -158,7 +221,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const onEnded = () => {
     report(true);
     skips.current = 0;
-    void start({ dir: "next", auto: true });
+    goNext(true);
   };
   const onError = () => {
     const p = playRef.current;
@@ -175,8 +238,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       void start({ itemId: p.item.id }, offset.current + (audio.current?.currentTime ?? 0));
       return;
     }
-    setError(`Couldn't play “${p.item.title}”. Skipping.`);
-    if (skips.current < MAX_SKIPS) { skips.current++; setTimeout(() => void start({ dir: "next", auto: true }), 1200); } else setPlaying(false);
+    if (!skipFrom(p.item.id, p.item.title, "the audio could not be played")) { setError(`Couldn't play “${p.item.title}”.`); setPlaying(false); }
   };
 
   // ----- on-demand capture status + heartbeat -----
@@ -285,7 +347,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       try { report(false); const q = await api<Queue>(`/api/music/playlists/${id}/play`, { method: "POST", body: o ?? {} }); setQueue(q); await start({ itemId: q.state.currentItemId ?? q.items[0].id }); } catch (e) { setError((e as Error).message); }
     },
     toggle,
-    next() { skips.current = 0; report(false); void start({ dir: "next" }); },
+    next() { skips.current = 0; netTries.current = 0; report(false); goNext(false); },
     prev() {
       const a = audio.current;
       if (a && offset.current + a.currentTime > 4) { seek(0); return; } // like most players: restart first
@@ -350,6 +412,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         onTimeUpdate={onTime}
         onLoadedMetadata={onLoadedMeta}
         onPlay={() => setPlaying(true)}
+        onPlaying={() => { skips.current = 0; }}
         onPause={() => setPlaying(false)}
         onSeeked={sendPresence}
         onEnded={onEnded}

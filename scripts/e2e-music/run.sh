@@ -38,7 +38,7 @@ curl -fs -o /dev/null http://localhost:3100/login || { echo "web server did not 
 for _ in $(seq 1 30); do [ -s "$E/sink/cert.pem" ] && break; sleep 1; done
 
 rc=0
-DEFAULT_PARTS="part1-local part2-ondemand part4-security part6-discover part8-mobile part9-presence"
+DEFAULT_PARTS="part1-local part10-resilience part2-ondemand part4-security part6-discover part8-mobile part9-presence"
 if [ -n "${WHISPER_MODEL_DIR:-}" ]; then DEFAULT_PARTS="$DEFAULT_PARTS part7-subtitles"; else echo "(part7-subtitles skipped: set WHISPER_MODEL_DIR to a folder containing Xenova/whisper-tiny)"; fi
 for part in ${PARTS:-$DEFAULT_PARTS}; do
   echo "=== $part"; node "$HERE/$part.mjs" || rc=1
