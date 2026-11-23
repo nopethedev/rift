@@ -33,7 +33,7 @@ const page = await ctx.newPage();
 await page.goto(BASE + "/music/library");
 await page.getByRole("link", { name: /Test Album/ }).first().click();
 await page.getByRole("heading", { name: "Test Album" }).waitFor();
-await page.getByRole("button", { name: "Play Tone One" }).click();
+await page.getByRole("main").getByRole("button", { name: "Play Tone One" }).click();
 const act = await until(async () => { const x = await j(await noAuth.get(`/api/presence/${token}`)); return x.body?.activity ?? null; }, 20000, 400);
 check("playing a song shows up as 'Listening' with title and artist", act && act.type === 2 && act.details === "Tone One" && act.state === "by Test Artist", JSON.stringify(act));
 check("progress timeline is present (start before now, end = start + length)", act?.timestamps && act.timestamps.start <= Date.now() && Math.abs((act.timestamps.end - act.timestamps.start) / 1000 - 14) < 1.5, JSON.stringify(act?.timestamps));

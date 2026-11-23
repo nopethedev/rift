@@ -185,7 +185,7 @@ check("clicking a trending song plays it (library first, then on-demand)", !!pla
 await page.screenshot({ path: E + "/shot-music-playing.png" });
 // heart from the player's row view: open an album page and like a track
 await page.goto(BASE + "/music/release/14");
-await page.getByRole("heading", { name: "Demo Hits" }).waitFor();
+await page.getByRole("heading", { name: "Demo Hits", level: 1 }).waitFor();
 await page.getByRole("button", { name: /Add Beta Track to Liked songs/ }).click({ force: true });
 await page.getByRole("button", { name: /Remove Beta Track from Liked songs/ }).waitFor();
 await page.goto(BASE + "/music/liked");
