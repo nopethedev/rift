@@ -131,11 +131,14 @@ export async function artistBio(name: string): Promise<{ text: string; url: stri
   return (await tryTitle(title)) ?? (await tryTitle(`${title}_(band)`)) ?? (await tryTitle(`${title}_(singer)`)) ?? (await tryTitle(`${title}_(musician)`));
 }
 
+/** Same song listed twice (single + album version): keep the first (= the more popular) one. */
+const dedupeSongs = (tracks: CatTrack[]): CatTrack[] => { const seen = new Set<string>(); return tracks.filter((t) => { const k = `${normalize(t.title)}|${normalize(t.artist)}`; if (seen.has(k)) return false; seen.add(k); return true; }); };
+
 export async function artistProfile(artistId: string): Promise<ArtistProfile> {
   if (!/^\d{1,12}$/.test(artistId)) throw new OnlineError("Bad artist id");
   const a = await dz<Raw>(`/artist/${artistId}`, 6 * HOUR);
   const [top, albums, related, bio] = await Promise.all([
-    dz<Raw>(`/artist/${artistId}/top?limit=20`, 6 * HOUR).then((r) => list(r).filter(playable).map((t) => mapTrack(t))).catch(() => [] as CatTrack[]),
+    dz<Raw>(`/artist/${artistId}/top?limit=100`, 6 * HOUR).then((r) => dedupeSongs(list(r).filter(playable).map((t) => mapTrack(t)))).catch(() => [] as CatTrack[]),
     dz<Raw>(`/artist/${artistId}/albums?limit=100`, 6 * HOUR).then((r) => list(r).map(mapAlbum)).catch(() => [] as CatAlbum[]),
     dz<Raw>(`/artist/${artistId}/related?limit=12`, 12 * HOUR).then((r) => list(r).map(mapArtist)).catch(() => [] as CatArtist[]),
     artistBio(String(a.name ?? "")).catch(() => null),

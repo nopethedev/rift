@@ -8,6 +8,7 @@ import { env } from "../config";
 import { findAlbumArt, onlineEnabled } from "./online";
 import { coverDir } from "./library";
 import { artUrlAllowed } from "./art-hosts";
+import { songKey } from "@/lib/music-types";
 
 // ---------- remote image cache (used by the /api/music/art proxy) ----------
 const artDir = () => path.join(env.dataDir, "music", "art");
@@ -115,4 +116,52 @@ export function queueArtworkFill(delayMs = 4000) {
   if (fill.timer) clearTimeout(fill.timer);
   fill.timer = setTimeout(() => { fill.timer = null; void fillMissingArtwork().catch((e) => console.warn("[music] artwork lookup failed:", (e as Error).message)); }, delayMs);
   fill.timer.unref();
+}
+
+// ---------- covers for playlist entries (imported lists often carry names only) ----------
+export interface PlaylistArtState { running: boolean; done: number; total: number }
+const gp = globalThis as unknown as { __riftPlaylistArt?: Map<string, PlaylistArtState> };
+const pfill = (gp.__riftPlaylistArt ??= new Map());
+export const playlistArtStatus = (playlistId: string): PlaylistArtState | null => pfill.get(playlistId) ?? null;
+
+/**
+ * Looks up a cover for every entry of a playlist that has none (one lookup per album, or per song when the album is unknown)
+ * and stores the picture URL on the entries. Runs in the background; callers poll `playlistArtStatus`.
+ */
+export function fillPlaylistArtwork(playlistId: string, force = false): PlaylistArtState {
+  const cur = pfill.get(playlistId);
+  if (cur?.running) return cur;
+  const st: PlaylistArtState = { running: true, done: 0, total: 0 };
+  pfill.set(playlistId, st);
+  void (async () => {
+    try {
+      if (!(await onlineEnabled())) return;
+      const retry = { OR: [{ artTriedAt: null }, { artTriedAt: { lt: new Date(Date.now() - RETRY_MS) } }] };
+      const rows = await db.musicPlaylistItem.findMany({
+        where: { playlistId, AND: [{ artworkUrl: null }, { OR: [{ trackId: null }, { track: { coverHash: null } }] }, ...(force ? [] : [retry])] },
+        select: { id: true, title: true, artist: true, album: true }, orderBy: { position: "asc" }, take: 1000,
+      });
+      const groups = new Map<string, typeof rows>();
+      for (const r of rows) { const k = r.album ? `a:${songKey(r.artist, r.album)}` : `t:${songKey(r.artist, r.title)}`; const a = groups.get(k); if (a) a.push(r); else groups.set(k, [r]); }
+      const lists = [...groups.values()];
+      st.total = lists.length;
+      let n = 0;
+      const worker = async () => {
+        for (;;) {
+          const list = lists[n++];
+          if (!list) return;
+          const t = list[0];
+          let url: string | null = null;
+          try { url = await findAlbumArt({ artist: t.artist, album: t.album, title: t.title }); }
+          catch { st.done++; continue; } // offline or rate limited: try again next time
+          const ids = list.map((x) => x.id);
+          await db.musicPlaylistItem.updateMany({ where: { id: { in: ids } }, data: { artTriedAt: new Date(), ...(url ? { artworkUrl: url } : {}) } }).catch(() => {});
+          st.done++;
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+    } catch (e) { console.warn("[music] playlist artwork lookup failed:", (e as Error).message); }
+    finally { st.running = false; setTimeout(() => { if (pfill.get(playlistId) === st) pfill.delete(playlistId); }, 30_000).unref(); }
+  })();
+  return st;
 }

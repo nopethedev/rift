@@ -46,6 +46,10 @@ model Profile {
   isKids    Boolean         @default(false)
   // JSON string[] of taste-genre keys picked when the profile was created (see src/lib/taste.ts)
   favoriteGenres String?
+  // Discord Rich Presence (opt-in): the secret the companion script on the user's PC uses to read this profile's "now playing"
+  presenceToken  String?         @unique
+  presenceMusic  Boolean         @default(true)
+  presenceStream Boolean         @default(false)
   createdAt DateTime        @default(now())
   user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   progress  WatchProgress[]
@@ -320,6 +324,7 @@ model MusicPlaylistItem {
   availabilityNote String?
   candidate        String? // JSON: on-demand search result that matched (pinned for playback)
   checkedAt        DateTime?
+  artTriedAt       DateTime? // last automatic cover lookup (misses are retried after a week)
   playlist    MusicPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
   track       MusicTrack?   @relation(fields: [trackId], references: [id], onDelete: SetNull)
 
@@ -351,7 +356,7 @@ model MusicQueueState {
   repeat        String   @default("off") // off | all | one
   autoplay      Boolean  @default(true)
   positionSec   Float    @default(0)
-  shuffleOrder  String? // JSON string[] of queue item ids in shuffled play order
+  originalOrder String? // JSON string[]: queue item ids in their order before shuffle was switched on (restored when it is switched off)
   updatedAt     DateTime @default(now()) @updatedAt
   profile       Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }

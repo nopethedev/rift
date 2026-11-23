@@ -35,6 +35,22 @@ r = await j("/api/music/online/artist?name=Test%20Artist");
 const pf = r.body?.profile;
 check("artist profile found by name with fans, bio and link", pf?.artist.id === "1" && pf.artist.fans === 123456 && /electronic music band/.test(pf.bio?.text ?? "") && /wikipedia/.test(pf.bio?.url ?? ""), JSON.stringify(pf?.bio)?.slice(0, 80));
 check("artist top tracks and related artists", pf.topTracks.length === 1 && pf.topTracks[0].title === "Tone One" && pf.related.length === 2);
+// Spotify-style "Popular": 5 songs, "See more" -> 10, "Show all" -> every song (duplicates of one song merged), "Show less" -> 5
+{
+  const b = await chromium.launch();
+  const pg = await (await b.newContext({ viewport: { width: 1280, height: 900 }, storageState: await api.storageState() })).newPage();
+  await pg.goto(BASE + "/music/artists/Prolific%20Artist?id=4");
+  const rows = () => pg.getByRole("button", { name: /^Play Hit Number/ }).count();
+  await pg.getByRole("heading", { name: "Popular" }).waitFor();
+  check("artist Popular starts with 5 songs", (await rows()) === 5, String(await rows()));
+  await pg.getByRole("button", { name: "See more" }).click();
+  check("See more shows 10", (await rows()) === 10, String(await rows()));
+  await pg.getByRole("button", { name: /Show all 14 songs/ }).click();
+  check("Show all lists every song once (14 distinct, the duplicate merged)", (await rows()) === 14, String(await rows()));
+  await pg.getByRole("button", { name: "Show less" }).click();
+  check("Show less goes back to 5", (await rows()) === 5, String(await rows()));
+  await b.close();
+}
 check("discography is newest-first with duplicate titles merged", pf.albums.map((x) => x.title).join("|") === "Lone Single|Test Album (Deluxe)|Test Album", pf.albums.map((x) => x.title).join("|"));
 check("album kinds are mapped (single)", pf.albums[0].kind === "single");
 r = await j("/api/music/online/artist?name=Other%20Artist");

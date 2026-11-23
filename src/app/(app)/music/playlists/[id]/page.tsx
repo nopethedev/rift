@@ -10,7 +10,7 @@ import { useMusic } from "@/components/music/player-provider";
 import type { TrackDTO } from "@/lib/music-types";
 
 interface Item { id: string; title: string; artist: string; album: string | null; durationSec: number | null; artworkUrl: string | null; trackId: string | null; availability: "local" | "ondemand" | "unavailable" | null; availabilityNote: string | null; track: TrackDTO | null }
-interface Resp { playlist: { id: string; name: string; description: string | null; source: string; sourceUrl: string | null; artworkUrl: string | null; lastSyncedAt: string | null; count: number; unavailable: number }; items: Item[]; check: { running: boolean; done: number; total: number } | null }
+interface Resp { playlist: { id: string; name: string; description: string | null; source: string; sourceUrl: string | null; artworkUrl: string | null; lastSyncedAt: string | null; count: number; unavailable: number }; items: Item[]; check: { running: boolean; done: number; total: number } | null; artFill?: { running: boolean; done: number; total: number } | null }
 
 export default function PlaylistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -21,7 +21,8 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<"sync" | "check" | null>(null);
   const checking = !!data?.check?.running;
-  useEffect(() => { setPoll(checking ? 1500 : 0); }, [checking]);
+  const busyBackground = checking || !!data?.artFill?.running; // covers appear as they are found
+  useEffect(() => { setPoll(busyBackground ? 1500 : 0); }, [busyBackground]);
 
   if (loading) return <Skeleton className="h-64" />;
   if (error || !data) return <p role="alert" className="text-red-300">{error || "Playlist not found"}</p>;

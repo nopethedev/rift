@@ -56,6 +56,15 @@ check("player bar shows the track", await page.getByTestId("music-bar").getByTex
 await page.evaluate(() => { const a = document.querySelector('[data-testid="music-audio"]'); a.currentTime = 9; });
 s = await until(async () => { const x = await audioState(); return x.t > 9.2 ? x : null; }, 5000);
 check("seeking works on direct playback", !!s, s && String(s.t));
+// the phone/lock-screen "now playing" card (Media Session): title, artist, absolute cover URLs in several sizes, handlers, progress
+{
+  const ms = await page.evaluate(() => { const m = navigator.mediaSession; const md = m.metadata; return md ? { title: md.title, artist: md.artist, album: md.album, art: md.artwork.map((a) => a.src + " " + a.sizes), state: m.playbackState } : null; });
+  check("media session card has title, artist and album", ms?.title === "Tone One" && ms.artist === "Test Artist" && ms.album === "Test Album", JSON.stringify(ms)?.slice(0, 160));
+  check("media session cover is an absolute URL offered in several sizes", (ms?.art.length ?? 0) >= 4 && ms.art.every((a) => /^https?:\/\/[^ ]+\/api\/music\/cover\/[0-9a-f]+ \d+x\d+$/.test(a)), ms?.art?.[0]);
+  const cover = await page.evaluate(async (u) => { const r = await fetch(u); return { ok: r.ok, type: r.headers.get("content-type") }; }, ms?.art?.[0]?.split(" ")[0]);
+  check("the card's cover loads with the page's session (image/jpeg)", cover.ok && /image\/jpeg/.test(cover.type ?? ""), JSON.stringify(cover));
+  check("media session reports playing", ms?.state === "playing", ms?.state);
+}
 // next -> flac, ogg, opus
 const names = ["Tone Two", "Tone Three", "Tone Four"];
 for (const n of names) {
@@ -106,6 +115,22 @@ await api.patch("/api/music/queue/state", { data: { shuffle: true, repeat: "all"
 const q3 = await (await api.get("/api/music/queue")).json();
 check("shuffle + repeat persisted", q3.state.shuffle && q3.state.repeat === "all");
 await api.patch("/api/music/queue/state", { data: { shuffle: false, repeat: "off" } });
+
+// shuffle reorders the real queue: what the queue shows is what plays next (and what gets preloaded)
+{
+  const ids = (q) => q.items.map((i) => i.id);
+  const all = await (await api.get("/api/music/library?kind=tracks&take=50")).json();
+  await api.put("/api/music/queue", { data: { items: all.tracks.map((t) => ({ trackId: t.id })), startIndex: 1, shuffle: false } });
+  const before = await (await api.get("/api/music/queue")).json();
+  const cur0 = before.state.currentItemId;
+  const sh = await (await api.patch("/api/music/queue/state", { data: { shuffle: true } })).json();
+  check("shuffle keeps every song and the current one first", [...ids(sh)].sort().join() === [...ids(before)].sort().join() && ids(sh)[0] === cur0, `n=${sh.items.length}`);
+  check("shuffle really reordered the queue", ids(before).length < 5 || ids(sh).join() !== ids(before).join(), "");
+  const nx = await (await api.post("/api/music/play", { data: { dir: "next", caps: { mp3: true, flac: true, opus: true, aac: true, vorbis: true } } })).json();
+  check("next plays the song the shuffled queue shows next", nx.play?.item.id === ids(sh)[1], `${nx.play?.item.id} vs ${ids(sh)[1]}`);
+  const un = await (await api.patch("/api/music/queue/state", { data: { shuffle: false } })).json();
+  check("shuffle off restores the original order", ids(un).join() === ids(before).join(), "");
+}
 
 // history + home recommendations
 const home = await (await api.get("/api/music/home")).json();

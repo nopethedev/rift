@@ -25,6 +25,17 @@ check("found-on-source tracks marked on-demand", av["Alpha Track"] === "ondemand
 const nonex = detail.items.find((i) => i.title === "Nonexistent Song");
 check("tracks nobody has are marked unavailable with a reason", nonex.availability === "unavailable" && /No source|authorised source|matched closely|No recording/i.test(nonex.availabilityNote ?? ""), nonex.availabilityNote);
 check("playlist summary counts unavailable", detail.playlist.unavailable === 1 && detail.playlist.count === 4);
+// covers for entries that came without one are looked up automatically (Deezer, then iTunes)
+{
+  const arted = await until(async () => { const d = await (await api.get(`/api/music/playlists/${pl.id}`)).json(); const a = d.items.find((i) => i.title === "Alpha Track"); return a?.artworkUrl ? d : null; }, 30000, 500);
+  const alpha = arted?.items.find((i) => i.title === "Alpha Track");
+  check("playlist songs without a cover get one automatically", /cover-14\.jpg$/.test(alpha?.artworkUrl ?? ""), alpha?.artworkUrl ?? "none");
+  const missing = arted?.items.find((i) => i.title === "Nonexistent Song");
+  check("a song nobody has art for stays without (and is not retried on every view)", !missing?.artworkUrl, missing?.artworkUrl ?? "");
+  const lists = await (await api.get("/api/music/playlists")).json();
+  const mine = (lists.playlists ?? lists).find((x) => x.id === pl.id);
+  check("playlist list shows a cover taken from its songs", !!mine?.artworkUrl, mine?.artworkUrl ?? "none");
+}
 r = await api.post(`/api/music/playlists/${pl.id}/sync`);
 check("manual playlists cannot be 'synced'", r.status() === 400);
 r = await api.post(`/api/music/playlists/${pl.id}/play`, { data: {} });

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { db } from "@/server/db";
 import { route, body, HttpError } from "@/server/api";
+import { clearNow, presenceCfg, publicImage, setNow } from "@/server/presence";
+import { tmdbImg } from "@/lib/types";
 
 const schema = z.object({
   mediaFileId: z.string().min(1).max(40),
@@ -34,11 +36,23 @@ export const POST = route("profile", async ({ req, auth, profile, ip }) => {
       })
       .catch(() => {});
   }
+  void reportPresence(profile.id, titleId, file.episode, d.position, duration);
   return { ok: true, completed };
 });
 
+/** Discord Rich Presence "Watching ..." (only for profiles that switched it on; never blocks or fails the heartbeat). */
+async function reportPresence(profileId: string, titleId: string, episode: { season: number; number: number; name: string | null } | null, position: number, duration: number) {
+  try {
+    if (!(await presenceCfg(profileId)).stream) return;
+    const t = await db.title.findUnique({ where: { id: titleId }, select: { title: true, year: true, posterPath: true } });
+    if (!t) return;
+    setNow(profileId, { kind: "video", title: t.title, subtitle: episode ? `S${episode.season}:E${episode.number}${episode.name ? ` · ${episode.name}` : ""}` : t.year ? String(t.year) : "On Rift", image: publicImage(tmdbImg(t.posterPath)), position, duration, playing: true });
+  } catch { /* presence is best effort */ }
+}
+
 /** Player closed — remove the active stream row. */
-export const DELETE = route("profile", async ({ req, auth }) => {
+export const DELETE = route("profile", async ({ req, auth, profile }) => {
+  clearNow(profile.id, "video");
   const id = req.nextUrl.searchParams.get("streamId");
   if (id) await db.streamSession.deleteMany({ where: { id, userId: auth.user.id } });
   return { ok: true };

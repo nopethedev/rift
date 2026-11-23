@@ -6,8 +6,9 @@ import type { EntryStatus } from "@shared/music-protocol";
 import { upcoming } from "@/lib/music-queue";
 import { coverUrl, findLocalMatch } from "./catalog";
 import { musicMode, toWorkerConfig } from "./config";
-import { ensureState, loadQueue, type QueueItemDTO } from "./queue";
+import { loadQueue, type QueueItemDTO } from "./queue";
 import { musicWorker } from "./worker";
+import { findAlbumArt, onlineEnabled } from "./online";
 
 export interface Caps { opus?: boolean; flac?: boolean; aac?: boolean; mp3?: boolean; vorbis?: boolean }
 
@@ -46,6 +47,8 @@ export async function playItem(ctx: Ctx, itemId: string, caps: Caps = {}, forceT
     const m = await findLocalMatch(row.title, row.artist, row.durationSec ?? undefined);
     if (m) { trackId = m.id; artwork = artwork ?? coverUrl(m.coverHash); await db.musicQueueItem.update({ where: { id: row.id }, data: { trackId, artworkUrl: artwork } }); }
   }
+  // No cover yet (typical for songs added by name): look one up so the player bar and the phone's lock-screen card have a picture.
+  if (!artwork && !trackId) artwork = await quickArt(row.id, { artist: row.artist, album: row.album, title: row.title });
   const dto = (await loadQueue(ctx.profileId)).items.find((i) => i.id === itemId)!;
 
   if (trackId) {
@@ -69,6 +72,13 @@ export async function playItem(ctx: Ctx, itemId: string, caps: Caps = {}, forceT
   return { item: dto, kind: "ondemand", url: `/api/music/od/${status.key}/audio`, transcode: false, durationSec: status.durationSec ?? row.durationSec, key: status.key, status };
 }
 
+/** Cover lookup that never holds playback back for long: waits up to 1.5 s, and keeps going in the background to store the result. */
+async function quickArt(itemId: string, q: { artist: string; album: string | null; title: string }): Promise<string | null> {
+  if (!(await onlineEnabled().catch(() => false))) return null;
+  const lookup = findAlbumArt(q).then(async (url) => { if (url) await db.musicQueueItem.update({ where: { id: itemId }, data: { artworkUrl: url } }).catch(() => {}); return url; }).catch(() => null);
+  return Promise.race([lookup, new Promise<null>((r) => setTimeout(() => r(null), 1500).unref())]);
+}
+
 /** Keeps exactly the next N on-demand tracks warm in the worker cache and cancels preloads that fell out of range. */
 export async function syncPreloads(ctx: Ctx): Promise<string[]> {
   const s = await getSettings();
@@ -78,11 +88,7 @@ export async function syncPreloads(ctx: Ctx): Promise<string[]> {
     return [];
   }
   const q = await loadQueue(ctx.profileId);
-  const state = { ...q.state, shuffleOrder: null as string[] | null };
-  const st = await ensureState(ctx.profileId);
-  if (st.shuffle && st.shuffleOrder) state.shuffleOrder = JSON.parse(st.shuffleOrder);
-  state.shuffle = st.shuffle;
-  const ids = upcoming(q.items.map((i, position) => ({ id: i.id, position })), state, s.musicPreloadCount);
+  const ids = upcoming(q.items.map((i, position) => ({ id: i.id, position })), q.state, s.musicPreloadCount);
   const cfg = toWorkerConfig(s);
   const keys: string[] = [];
   for (const id of ids) {

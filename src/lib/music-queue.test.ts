@@ -1,22 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { makeShuffleOrder, moveItem, nextId, playOrder, prevId, upcoming, type QItem, type QState } from "./music-queue";
+import { makeShuffleOrder, moveItem, nextId, playOrder, prevId, restoreOrder, upcoming, type QItem, type QState } from "./music-queue";
 
 const items = (...ids: string[]): QItem[] => ids.map((id, i) => ({ id, position: i }));
-const st = (over: Partial<QState> = {}): QState => ({ currentItemId: "b", shuffle: false, repeat: "off", shuffleOrder: null, ...over });
+const st = (over: Partial<QState> = {}): QState => ({ currentItemId: "b", repeat: "off", ...over });
 const seeded = (seed = 1) => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 
 describe("queue order", () => {
   it("plays in position order", () => {
-    expect(playOrder(items("a", "b", "c").reverse(), st())).toEqual(["a", "b", "c"]);
+    expect(playOrder(items("a", "b", "c").reverse())).toEqual(["a", "b", "c"]);
   });
   it("shuffle keeps the current track first and is a permutation", () => {
     const o = makeShuffleOrder(["a", "b", "c", "d", "e"], "c", seeded());
     expect(o[0]).toBe("c");
     expect([...o].sort()).toEqual(["a", "b", "c", "d", "e"]);
   });
-  it("shuffled order survives removals and appends new items at the end", () => {
-    const s = st({ shuffle: true, shuffleOrder: ["c", "a", "d", "b"] });
-    expect(playOrder(items("a", "b", "c", "e"), s)).toEqual(["c", "a", "b", "e"]);
+  it("shuffle gives the same result for the same random numbers and never loses items", () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `i${i}`);
+    expect(makeShuffleOrder(ids, "i7", seeded(3))).toEqual(makeShuffleOrder(ids, "i7", seeded(3)));
+    expect(makeShuffleOrder(ids, "i7", seeded(3))).not.toEqual(ids);
+    expect(makeShuffleOrder(ids, null).sort()).toEqual([...ids].sort());
+  });
+});
+
+describe("restoreOrder (shuffle off)", () => {
+  it("brings back the original order", () => {
+    const orig = ["a", "b", "c", "d", "e"];
+    const shuffled = makeShuffleOrder(orig, "c", seeded(5));
+    expect(restoreOrder(orig, shuffled)).toEqual(orig);
+  });
+  it("drops removed items and keeps items added while shuffled behind the song they followed", () => {
+    // original a b c d; shuffled: c, x(new), a, d, y(new), b with "b" removed afterwards
+    expect(restoreOrder(["a", "b", "c", "d"], ["c", "x", "a", "d", "y"])).toEqual(["a", "c", "x", "d", "y"]);
+  });
+  it("puts new items that lead the queue at the front and copes with an empty snapshot", () => {
+    expect(restoreOrder(["a", "b"], ["n", "b", "a"])).toEqual(["n", "a", "b"]);
+    expect(restoreOrder([], ["q", "r"])).toEqual(["q", "r"]);
   });
 });
 
@@ -41,10 +59,6 @@ describe("next / previous", () => {
   it("previous clamps at the start when not repeating", () => {
     expect(prevId(items("a", "b"), st({ currentItemId: "a" }))).toBe("a");
     expect(prevId(items("a", "b"), st({ currentItemId: "b" }))).toBe("a");
-  });
-  it("follows the shuffle order", () => {
-    const s = st({ shuffle: true, shuffleOrder: ["b", "d", "a", "c"], currentItemId: "b" });
-    expect(nextId(items("a", "b", "c", "d"), s)).toBe("d");
   });
 });
 

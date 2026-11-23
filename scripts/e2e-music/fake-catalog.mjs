@@ -21,6 +21,7 @@ const album = (id, title, ar, year, type, n = 10) => ({ id, title, artist: { id:
 const ALB = { 11: album(11, "Test Album", 1, 2021, "album", 4), 12: album(12, "Test Album (Deluxe)", 1, 2022, "album"), 13: album(13, "Lone Single", 1, 2023, "single", 1), 14: album(14, "Demo Hits", 3, 2024, "album", 2) };
 const trk = (id, title, ar, alb, dur) => ({ id, title, title_short: title, duration: dur, explicit_lyrics: false, artist: { id: ar, name: A[ar].name }, album: { id: alb, title: ALB[alb].title, ...cov(alb) } });
 const T = [trk(101, "Alpha Track", 3, 14, 10), trk(102, "Beta Track", 3, 14, 10), trk(103, "Tone One", 1, 11, 14), trk(104, "Gamma Track", 2, 11, 10)];
+const PROLIFIC = { id: 4, name: "Prolific Artist", nb_fan: 777, nb_album: 0, picture_xl: `${B}/img/artist-1.jpg` };
 const D = (arr) => ({ data: arr, total: arr.length });
 const genres = D([{ id: 0, name: "All" }, { id: 132, name: "Pop", ...art(1) }, { id: 152, name: "Rock", ...art(2) }, { id: 113, name: "Rap/Hip Hop", ...art(1) }]);
 const chart = (extra = {}) => ({ tracks: D(T), albums: D(Object.values(ALB)), artists: D(Object.values(A).filter((a) => a.id !== 3 || true)), playlists: D([]), ...extra });
@@ -56,6 +57,11 @@ function route(u) {
   if (p === "/chart/0" || /^\/chart\/\d+$/.test(p)) return chart();
   if (p === "/editorial/0/releases") return D([ALB[14], ALB[13]]);
   if (p === "/genre") return genres;
+  // an artist with many songs (not part of A / charts, so other checks keep their counts)
+  if (p === "/search/artist" && /prolific/i.test(u.searchParams.get("q") || "")) return D([PROLIFIC]);
+  if (p === "/artist/4") return PROLIFIC;
+  if (p === "/artist/4/top") return D(Array.from({ length: 14 }, (_, i) => trk(400 + i, `Hit Number ${i + 1}`, 3, 14, 200 + i)).map((t) => ({ ...t, artist: { id: 4, name: "Prolific Artist" } })).concat([{ ...trk(499, "Hit Number 1", 3, 14, 200), artist: { id: 4, name: "Prolific Artist" } }]));
+  if (/^\/artist\/4\/(albums|related)$/.test(p)) return D([]);
   if (p === "/search/artist") { const q = (u.searchParams.get("q") || "").replaceAll('"', "").toLowerCase(); return D(Object.values(A).filter((a) => a.name.toLowerCase().includes(q) || q.includes(a.name.toLowerCase()))); }
   if (p === "/search/album") {
     const q = u.searchParams.get("q") || "";

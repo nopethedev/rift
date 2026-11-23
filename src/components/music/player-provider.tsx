@@ -95,6 +95,19 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     api("/api/music/history", { method: "POST", body: { itemId: p.item.id, playedSec: sec, completed, kind: p.kind } }).catch(() => {});
   }, []);
 
+  // ----- Discord Rich Presence: tell the server what is playing (it ignores this unless the profile switched presence on) -----
+  const presenceOff = useRef(0);
+  const sentOnce = useRef(false);
+  const sendPresence = useCallback(() => {
+    if (Date.now() < presenceOff.current) return;
+    const p = playRef.current;
+    const a = audio.current;
+    if (!p && !sentOnce.current) return;
+    sentOnce.current = !!p;
+    const body = p && a ? { itemId: p.item.id, position: offset.current + (a.currentTime || 0), playing: !a.paused } : { itemId: null, position: 0, playing: false };
+    api<{ enabled: boolean }>("/api/music/presence", { method: "POST", body }).then((r) => { if (!r.enabled) presenceOff.current = Date.now() + 5 * 60_000; }).catch(() => {});
+  }, []);
+
   // ----- loading a track into the <audio> element -----
   const attach = useCallback((p: PlayInfo, at: number) => {
     const a = audio.current;
@@ -105,7 +118,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     setPosition(at);
     setDuration(p.durationSec ?? 0);
     void a.play().then(() => setPlaying(true)).catch((e: Error) => { if (e.name !== "AbortError") setPlaying(false); });
-  }, []);
+    queueMicrotask(sendPresence); // a restarted converted stream = a new position
+  }, [sendPresence]);
 
   const start = useCallback(async (body: { itemId?: string; dir?: "next" | "prev"; auto?: boolean; forceTranscode?: boolean }, at = 0) => {
     setLoading(true);
@@ -195,6 +209,18 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(t);
   }, [mode?.onDemand, play]);
 
+  useEffect(() => { sendPresence(); }, [play?.item.id, playing, sendPresence]);
+  useEffect(() => {
+    if (!playing) return;
+    const t = setInterval(sendPresence, 30_000);
+    return () => clearInterval(t);
+  }, [playing, sendPresence]);
+  useEffect(() => {
+    const on = () => { presenceOff.current = 0; sendPresence(); };
+    window.addEventListener("rift:presence-changed", on);
+    return () => window.removeEventListener("rift:presence-changed", on);
+  }, [sendPresence]);
+
   // remember the position (cheap) so the queue resumes where it stopped
   useEffect(() => {
     if (!playing) return;
@@ -283,21 +309,38 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     async clearQueue() { try { setQueue(await api<Queue>("/api/music/queue/clear", { method: "POST" })); audio.current?.pause(); setPlay(null); setPlaying(false); setCapture(null); } catch (e) { setError((e as Error).message); } },
   };
 
-  // ----- media keys / lock screen -----
+  // ----- media keys / lock screen / Android + iOS "now playing" card -----
   const latest = useRef(value);
   latest.current = value;
+  const art = current ? artSrc(current.artworkUrl) : null;
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
     const ms = navigator.mediaSession;
-    if (current) ms.metadata = new MediaMetadata({ title: current.title, artist: current.artist, album: current.album ?? "", artwork: current.artworkUrl ? [{ src: artSrc(current.artworkUrl) ?? "", sizes: "512x512", type: "image/jpeg" }] : [] });
-    const set = (a: MediaSessionAction, f: MediaSessionActionHandler) => { try { ms.setActionHandler(a, f); } catch { /* unsupported */ } };
-    set("play", () => latest.current.toggle());
-    set("pause", () => latest.current.toggle());
+    if (!current) { ms.metadata = null; return; }
+    // The card needs absolute URLs, and several sizes make Android pick the sharp one. Without a cover the Rift icon is shown.
+    const src = new URL(art ?? "/icons/icon-512.png", location.origin).href;
+    ms.metadata = new MediaMetadata({ title: current.title, artist: current.artist, album: current.album ?? "", artwork: [96, 128, 192, 256, 384, 512].map((n) => ({ src, sizes: `${n}x${n}` })) });
+  }, [current, art]);
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+    const set = (a: MediaSessionAction, f: MediaSessionActionHandler | null) => { try { ms.setActionHandler(a, f); } catch { /* unsupported */ } };
+    set("play", () => { const a = audio.current; if (a?.paused) latest.current.toggle(); });
+    set("pause", () => { const a = audio.current; if (a && !a.paused) latest.current.toggle(); });
     set("nexttrack", () => latest.current.next());
     set("previoustrack", () => latest.current.prev());
     set("seekto", (d) => { if (d.seekTime !== undefined) latest.current.seek(d.seekTime); });
-  }, [current]);
-  useEffect(() => { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = playing ? "playing" : "paused"; }, [playing]);
+    set("seekforward", (d) => latest.current.seek(latest.current.position + (d.seekOffset ?? 10)));
+    set("seekbackward", (d) => latest.current.seek(latest.current.position - (d.seekOffset ?? 10)));
+    set("stop", () => { const a = audio.current; if (a && !a.paused) latest.current.toggle(); });
+  }, []);
+  useEffect(() => { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = !current ? "none" : playing ? "playing" : "paused"; }, [playing, current]);
+  // progress bar on the card (position/duration are cheap to set; once per track and on seeks/pauses is enough)
+  const sec = Math.floor(position);
+  useEffect(() => {
+    if (!("mediaSession" in navigator) || !current || !duration || !Number.isFinite(duration)) return;
+    try { navigator.mediaSession.setPositionState({ duration, playbackRate: 1, position: Math.min(Math.max(0, sec), duration) }); } catch { /* not supported / invalid */ }
+  }, [current, duration, playing, sec - (sec % 5)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Ctx.Provider value={value}>
@@ -308,6 +351,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         onLoadedMetadata={onLoadedMeta}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
+        onSeeked={sendPresence}
         onEnded={onEnded}
         onError={onError}
         data-testid="music-audio"

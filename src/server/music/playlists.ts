@@ -11,6 +11,7 @@ import type { ItemInput } from "./queue";
 import { musicWorker } from "./worker";
 import { seal, unseal } from "./seal";
 import { matchPatch } from "./saved";
+import { fillPlaylistArtwork, playlistArtStatus } from "./artwork";
 
 export type Availability = "local" | "ondemand" | "unavailable";
 export interface PlaylistItemDTO {
@@ -37,17 +38,25 @@ export async function listPlaylists(profileId: string): Promise<PlaylistDTO[]> {
   const ps = await db.musicPlaylist.findMany({ where: { profileId }, orderBy: { updatedAt: "desc" }, include: { _count: { select: { items: true } } } });
   const bad = await db.musicPlaylistItem.groupBy({ by: ["playlistId"], where: { playlist: { profileId }, availability: "unavailable" }, _count: { _all: true } });
   const badBy = new Map(bad.map((b) => [b.playlistId, b._count._all]));
-  return ps.map((p) => ({ id: p.id, name: p.name, description: p.description, source: p.source, sourceUrl: p.sourceUrl, artworkUrl: p.artworkUrl, lastSyncedAt: p.lastSyncedAt?.toISOString() ?? null, updatedAt: p.updatedAt.toISOString(), count: p._count.items, unavailable: badBy.get(p.id) ?? 0 }));
+  // Playlists without a cover of their own (manual ones, imports whose cover failed) show the first song's cover.
+  const art = new Map<string, string | null>();
+  for (const p of ps.filter((x) => !x.artworkUrl)) {
+    const it = await db.musicPlaylistItem.findFirst({ where: { playlistId: p.id, OR: [{ artworkUrl: { not: null } }, { track: { coverHash: { not: null } } }] }, orderBy: { position: "asc" }, include: { track: true } });
+    art.set(p.id, it ? itemDTO(it).artworkUrl : null);
+  }
+  return ps.map((p) => ({ id: p.id, name: p.name, description: p.description, source: p.source, sourceUrl: p.sourceUrl, artworkUrl: p.artworkUrl ?? art.get(p.id) ?? null, lastSyncedAt: p.lastSyncedAt?.toISOString() ?? null, updatedAt: p.updatedAt.toISOString(), count: p._count.items, unavailable: badBy.get(p.id) ?? 0 }));
 }
 
 export async function getPlaylist(profileId: string, id: string) {
   const p = await owned(profileId, id);
   const items = await db.musicPlaylistItem.findMany({ where: { playlistId: id }, orderBy: { position: "asc" }, include: { track: true } });
   const dto = items.map(itemDTO);
+  if (dto.some((i) => !i.artworkUrl)) fillPlaylistArtwork(id); // lazily seeds covers (cheap no-op when everything was already tried)
   return {
     playlist: { id: p.id, name: p.name, description: p.description, source: p.source, sourceUrl: p.sourceUrl, artworkUrl: p.artworkUrl ?? dto.find((i) => i.artworkUrl)?.artworkUrl ?? null, lastSyncedAt: p.lastSyncedAt?.toISOString() ?? null, updatedAt: p.updatedAt.toISOString(), count: dto.length, unavailable: dto.filter((i) => i.availability === "unavailable").length } satisfies PlaylistDTO,
     items: dto,
     check: checkStatus(id),
+    artFill: playlistArtStatus(id),
   };
 }
 
@@ -79,6 +88,7 @@ export async function addToPlaylist(profileId: string, id: string, inputs: ItemI
     }
   }
   await db.musicPlaylist.update({ where: { id }, data: { updatedAt: new Date() } });
+  fillPlaylistArtwork(id);
 }
 
 export async function removeFromPlaylist(profileId: string, id: string, itemId: string) {
@@ -138,6 +148,7 @@ export async function importSpotify(profileId: string, user: { role: "ADMIN" | "
   const id = existing?.id ?? (await db.musicPlaylist.create({ data: { profileId, name: imp.name.slice(0, 120), source: "spotify", sourceUrl: url.trim(), sourceId: imp.sourceId } })).id;
   await writeImported(id, imp);
   startCheck(profileId, user, id);
+  fillPlaylistArtwork(id);
   return { id, imported: imp.tracks.length, truncated: imp.truncated, via: imp.via, updatedExisting: !!existing };
 }
 
@@ -148,6 +159,7 @@ export async function syncPlaylist(profileId: string, user: { role: "ADMIN" | "U
   try { imp = await fetchSpotify(p.sourceUrl); } catch (e) { return mapSpotifyError(e); }
   await writeImported(id, imp);
   startCheck(profileId, user, id);
+  fillPlaylistArtwork(id);
   return { imported: imp.tracks.length, truncated: imp.truncated, via: imp.via };
 }
 

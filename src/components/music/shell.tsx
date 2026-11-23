@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
-import { Heart, Home, LayoutGrid, Library, ListMusic, LogOut, Plus, Search, Settings2, Shield, Users, X } from "lucide-react";
+import { Gamepad2, Heart, Home, LayoutGrid, Library, ListMusic, LogOut, Plus, Search, Settings2, Shield, Users, X } from "lucide-react";
 import { Avatar, Logo } from "../brand";
 import { api } from "../ui";
 import { Cover } from "./parts";
@@ -75,6 +75,7 @@ export function MusicShell({ profile, isAdmin, children }: { profile: { name: st
                 <Link href="/apps" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><LayoutGrid className="size-4" /> Switch app</Link>
                 <Link href="/profiles" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Users className="size-4" /> Switch profile</Link>
                 <Link href="/profiles?manage=1" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Settings2 className="size-4" /> Manage profiles</Link>
+                <Link href="/discord" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Gamepad2 className="size-4" /> Discord presence</Link>
                 {isAdmin && <Link href="/admin/music" className="flex items-center gap-3 px-4 py-2.5 text-violet-300 hover:bg-white/10"><Shield className="size-4" /> Music admin</Link>}
                 <button onClick={signOut} className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-2.5 text-left hover:bg-white/10"><LogOut className="size-4" /> Sign out</button>
               </div>

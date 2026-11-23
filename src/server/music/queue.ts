@@ -5,7 +5,7 @@ import { HttpError } from "../api";
 import { getSettings } from "../settings";
 import type { MusicQueueItem, MusicQueueState } from "@/generated/prisma/client";
 import type { Candidate } from "@shared/music-protocol";
-import { makeShuffleOrder, moveItem, nextId, playOrder, prevId, type RepeatMode } from "@/lib/music-queue";
+import { makeShuffleOrder, moveItem, nextId, playOrder, prevId, restoreOrder, type RepeatMode } from "@/lib/music-queue";
 import { coverUrl } from "./catalog";
 import { musicMode, type MusicMode } from "./config";
 import { recommendLocal } from "./recommend";
@@ -41,6 +41,11 @@ async function rows(profileId: string) {
   return db.musicQueueItem.findMany({ where: { profileId }, orderBy: { position: "asc" } });
 }
 
+/** Writes `ids` as the new queue order (position = index). */
+async function applyOrder(ids: string[]) {
+  if (ids.length) await db.$transaction(ids.map((id, position) => db.musicQueueItem.update({ where: { id }, data: { position } })));
+}
+
 export async function loadQueue(profileId: string): Promise<QueueDTO> {
   const [items, state] = await Promise.all([rows(profileId), ensureState(profileId)]);
   return { items: items.map(toItem), state: toState(state) };
@@ -73,7 +78,10 @@ export async function replaceQueue(profileId: string, inputs: ItemInput[], o: { 
   const start = created[Math.min(Math.max(o.startIndex ?? 0, 0), created.length - 1)];
   const cur = o.shuffle && o.startIndex === undefined ? created[Math.floor(Math.random() * created.length)] : start;
   const shuffle = o.shuffle ?? (await ensureState(profileId)).shuffle;
-  await db.musicQueueState.update({ where: { profileId }, data: { currentItemId: cur.id, positionSec: 0, shuffle, shuffleOrder: shuffle ? JSON.stringify(makeShuffleOrder(created.map((c) => c.id), cur.id)) : null } });
+  const original = created.map((c) => c.id);
+  // Shuffling reorders the queue itself (the current song first), so what you see is what plays and what gets preloaded.
+  if (shuffle) await applyOrder(makeShuffleOrder(original, cur.id));
+  await db.musicQueueState.update({ where: { profileId }, data: { currentItemId: cur.id, positionSec: 0, shuffle, originalOrder: shuffle ? JSON.stringify(original) : null } });
   return loadQueue(profileId);
 }
 
@@ -85,17 +93,11 @@ export async function addItems(profileId: string, inputs: ItemInput[], where: "e
   const created = await Promise.all(data.map((d, k) => db.musicQueueItem.create({ data: { ...d, profileId, position: (existing.at(-1)?.position ?? -1) + 1 + k } })));
   const newIds = created.map((c) => c.id);
   if (where === "next" && state.currentItemId) {
-    // Insert right after the current item in the queue order and in the shuffle order.
+    // Insert right after the current item (the queue order is the play order, shuffled or not).
     const ids = existing.map((e) => e.id);
     const at = ids.indexOf(state.currentItemId) + 1;
     const order = [...ids.slice(0, at), ...newIds, ...ids.slice(at)];
     await db.$transaction(order.map((id, position) => db.musicQueueItem.update({ where: { id }, data: { position } })));
-    if (state.shuffle && state.shuffleOrder) {
-      const so: string[] = JSON.parse(state.shuffleOrder);
-      const si = so.indexOf(state.currentItemId) + 1;
-      so.splice(si, 0, ...newIds);
-      await db.musicQueueState.update({ where: { profileId }, data: { shuffleOrder: JSON.stringify(so) } });
-    }
   }
   if (!state.currentItemId) await db.musicQueueState.update({ where: { profileId }, data: { currentItemId: newIds[0] } });
   return loadQueue(profileId);
@@ -105,7 +107,7 @@ export async function removeItem(profileId: string, id: string): Promise<QueueDT
   const q = await loadQueue(profileId);
   if (!q.items.some((i) => i.id === id)) throw new HttpError(404, "Queue item not found");
   let current = q.state.currentItemId;
-  if (current === id) current = nextId(q.items.map((i, position) => ({ id: i.id, position })), { ...q.state, shuffleOrder: await shuffleOrderOf(profileId) }) ?? null;
+  if (current === id) current = nextId(q.items.map((i, position) => ({ id: i.id, position })), q.state) ?? null;
   if (current === id) current = null;
   await db.musicQueueItem.delete({ where: { id } });
   await db.musicQueueState.update({ where: { profileId }, data: { currentItemId: current } });
@@ -121,13 +123,8 @@ export async function moveQueueItem(profileId: string, id: string, toIndex: numb
 
 export async function clearQueue(profileId: string): Promise<QueueDTO> {
   await db.musicQueueItem.deleteMany({ where: { profileId } });
-  await db.musicQueueState.update({ where: { profileId }, data: { currentItemId: null, positionSec: 0, shuffleOrder: null } });
+  await db.musicQueueState.update({ where: { profileId }, data: { currentItemId: null, positionSec: 0, originalOrder: null } });
   return loadQueue(profileId);
-}
-
-async function shuffleOrderOf(profileId: string): Promise<string[] | null> {
-  const s = await ensureState(profileId);
-  return s.shuffle && s.shuffleOrder ? (JSON.parse(s.shuffleOrder) as string[]) : null;
 }
 
 export async function patchState(profileId: string, p: Partial<{ shuffle: boolean; repeat: RepeatMode; autoplay: boolean; positionSec: number; currentItemId: string | null }>): Promise<QueueDTO> {
@@ -139,7 +136,14 @@ export async function patchState(profileId: string, p: Partial<{ shuffle: boolea
   if (p.currentItemId !== undefined) data.currentItemId = p.currentItemId;
   if (p.shuffle !== undefined && p.shuffle !== cur.shuffle) {
     data.shuffle = p.shuffle;
-    data.shuffleOrder = p.shuffle ? JSON.stringify(makeShuffleOrder((await rows(profileId)).map((r) => r.id), p.currentItemId ?? cur.currentItemId)) : null;
+    const ids = (await rows(profileId)).map((r) => r.id);
+    if (p.shuffle) { // reorder the queue now: the current song stays first, the rest is shuffled; remember the old order
+      await applyOrder(makeShuffleOrder(ids, cur.currentItemId));
+      data.originalOrder = JSON.stringify(ids);
+    } else { // switch off: back to the order it had before shuffling
+      await applyOrder(restoreOrder(cur.originalOrder ? (JSON.parse(cur.originalOrder) as string[]) : [], ids));
+      data.originalOrder = null;
+    }
   }
   if (Object.keys(data).length) await db.musicQueueState.update({ where: { profileId }, data });
   return loadQueue(profileId);
@@ -148,12 +152,11 @@ export async function patchState(profileId: string, p: Partial<{ shuffle: boolea
 /** Picks the next/previous item and makes it current. At the end of the queue, autoplay (if on) appends recommendations. */
 export async function advance(profileId: string, dir: "next" | "prev", auto: boolean, mode: MusicMode): Promise<{ itemId: string | null; queue: QueueDTO; ended: boolean }> {
   let q = await loadQueue(profileId);
-  const st = { ...q.state, shuffleOrder: await shuffleOrderOf(profileId) };
   const pos = () => q.items.map((i, position) => ({ id: i.id, position }));
-  let id = dir === "next" ? nextId(pos(), st, { auto }) : prevId(pos(), st);
+  let id = dir === "next" ? nextId(pos(), q.state, { auto }) : prevId(pos(), q.state);
   if (!id && dir === "next" && q.state.autoplay) {
     const added = await extendWithAutoplay(profileId, mode);
-    if (added) { q = await loadQueue(profileId); id = nextId(pos(), { ...st, shuffleOrder: await shuffleOrderOf(profileId) }); }
+    if (added) { q = await loadQueue(profileId); id = nextId(pos(), q.state); }
   }
   if (id) await db.musicQueueState.update({ where: { profileId }, data: { currentItemId: id, positionSec: 0 } });
   return { itemId: id, queue: await loadQueue(profileId), ended: !id };

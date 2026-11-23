@@ -55,6 +55,8 @@ export interface Settings {
   /** Where tracks come from: the uploaded library, on-demand sources, or both (library first). */
   musicSource: "local" | "ondemand" | "hybrid";
   /** auto = Lavalink first (when a node is configured), yt-dlp when that fails. */
+  /** Discord Application ID (discord.com/developers) used for Rich Presence; empty = presence unavailable. */
+  discordClientId: string;
   musicEngine: "auto" | "ytdlp" | "lavalink";
   /** Look up album art, artist photos/bios, charts and new releases online (Deezer + Wikipedia; only artist/title text is sent). */
   musicMetadata: boolean;
@@ -119,6 +121,7 @@ export const defaultSettings = (): Settings => ({
   onDemandMaxStreams: Math.max(0, Number(process.env.STREAM_MAX_SESSIONS) || 3),
   onDemandAccess: "admins",
   musicSource: "local",
+  discordClientId: "",
   musicEngine: "auto",
   musicMetadata: true,
   musicPreload: true,

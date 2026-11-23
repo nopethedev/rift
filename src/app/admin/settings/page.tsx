@@ -12,7 +12,7 @@ type S = {
   torrentSearchProviders: string[]; torznabUrl: string; torznabApiKey: string; sessionDays: number;
   onDemandMaxStreams: number; onDemandAccess: "admins" | "everyone";
   opensubtitlesApiKey: string; opensubtitlesUsername: string; opensubtitlesPassword: string; subtitleLanguages: string[];
-  whisperEnabled: boolean; whisperAuto: boolean; whisperModel: string; whisperLanguage: string; whisperTranslate: boolean; whisperAccess: "admins" | "everyone";
+  whisperEnabled: boolean; whisperAuto: boolean; whisperModel: string; whisperLanguage: string; whisperTranslate: boolean; whisperAccess: "admins" | "everyone"; discordClientId: string;
 };
 interface Resp { settings: S; ffmpeg: { ffmpeg: string | null; ffprobe: string | null; worker: { hwaccels: string[] } | null } }
 
@@ -200,6 +200,11 @@ export default function SettingsPage() {
             <option value="everyone">Everyone with an account</option><option value="admins">Administrators only</option>
           </Select>
           <p className="text-xs text-muted">One file is transcribed at a time (a 2-hour film takes roughly 10 to 20 minutes on 4 CPU cores with the tiny model). Tiny is fast but makes mistakes with accents, music and noise; treat it as a good-enough fallback when no real subtitles exist. Save changes to apply.</p>
+        </Card>
+
+        <Card className="space-y-4">
+          <h2 className="font-semibold">Discord Rich Presence</h2>
+          <Input label="Discord Application ID" value={s.discordClientId} onChange={(e) => set("discordClientId", e.target.value.replace(/\D/g, ""))} hint="Create an application at discord.com/developers, name it “Rift” (the name Discord shows after “Listening to”) and paste its Application ID here. Optional: upload an art asset called “rift” under Rich Presence. Then each profile can switch presence on under Account menu → Discord presence." />
         </Card>
 
         <Card className="space-y-4">

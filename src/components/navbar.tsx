@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
-import { Bookmark, Clapperboard, Home, LayoutGrid, LogOut, Search, Settings2, Tv, Users, X } from "lucide-react";
+import { Bookmark, Clapperboard, Gamepad2, Home, LayoutGrid, LogOut, Search, Settings2, Tv, Users, X } from "lucide-react";
 import { Avatar, Logo } from "./brand";
 import { api } from "./ui";
 import { isTvMode, setTvMode } from "./spatial-nav";
@@ -77,6 +77,7 @@ export function Navbar({ profile, isAdmin }: { profile: { name: string; avatar: 
                 <Link href="/apps" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><LayoutGrid className="size-4" /> Switch app</Link>
                 <Link href="/profiles" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Users className="size-4" /> Switch profile</Link>
                 <Link href="/profiles?manage=1" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Settings2 className="size-4" /> Manage profiles</Link>
+                <Link href="/discord" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Gamepad2 className="size-4" /> Discord presence</Link>
                 {isAdmin && <Link href="/admin" className="flex items-center gap-3 px-4 py-2.5 text-violet-300 hover:bg-white/10"><Settings2 className="size-4" /> Admin dashboard</Link>}
                 <button onClick={() => { setTvMode(!tv); setTv(!tv); }} role="switch" aria-checked={tv} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-white/10">
                   <Tv className="size-4" /> TV mode <span className={clsx("ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold uppercase", tv ? "bg-accent text-white" : "bg-white/10 text-white/50")}>{tv ? "On" : "Off"}</span>

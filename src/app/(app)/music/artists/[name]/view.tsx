@@ -40,7 +40,7 @@ export function ArtistView({ name, id }: { name: string; id?: string }) {
   const [local, setLocal] = useState<{ tracks: TrackDTO[]; total: number; albums: AlbumDTO[] } | null>(null);
   const [panel, setPanel] = useState(true);
   const [disco, setDisco] = useState<Disco>("all");
-  const [allTop, setAllTop] = useState(false);
+  const [topShown, setTopShown] = useState<5 | 10 | "all">(5); // like Spotify: 5, then 10, then every song we know
   const { playItems, current, play } = useMusic();
 
   useEffect(() => { try { setPanel(localStorage.getItem("rift-artist-panel") !== "0"); } catch { /* storage blocked */ } }, []);
@@ -122,8 +122,14 @@ export function ArtistView({ name, id }: { name: string; id?: string }) {
         {!!top.length && (
           <section className="mt-6">
             <SectionTitle>Popular</SectionTitle>
-            {(allTop ? top : top.slice(0, 5)).map((t, i) => <TrackRow key={t.id} item={topRow(t)} index={i} active={isActive(t)} onPlay={() => playItems(top.map(catInput), { startIndex: i, shuffle: false })} />)}
-            {top.length > 5 && <button onClick={() => setAllTop((a) => !a)} className="mt-2 px-3 text-sm font-semibold text-white/70 hover:text-white">{allTop ? "Show less" : "See more"}</button>}
+            {top.slice(0, topShown === "all" ? top.length : topShown).map((t, i) => <TrackRow key={t.id} item={topRow(t)} index={i} active={isActive(t)} onPlay={() => playItems(top.map(catInput), { startIndex: i, shuffle: false })} />)}
+            {top.length > 5 && (
+              <div className="mt-2 flex gap-4 px-3">
+                {topShown === 5 && <button onClick={() => setTopShown(top.length > 10 ? 10 : "all")} className="py-2 text-sm font-semibold text-white/70 hover:text-white">See more</button>}
+                {topShown === 10 && top.length > 10 && <button onClick={() => setTopShown("all")} className="py-2 text-sm font-semibold text-white/70 hover:text-white">Show all {top.length} songs</button>}
+                {topShown !== 5 && <button onClick={() => setTopShown(5)} className="py-2 text-sm font-semibold text-white/70 hover:text-white">Show less</button>}
+              </div>
+            )}
           </section>
         )}
 
