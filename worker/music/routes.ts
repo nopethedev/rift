@@ -27,7 +27,7 @@ export interface RouteHelpers {
   sendJson(res: http.ServerResponse, status: number, body: unknown): void;
 }
 
-const node = z.object({ id: z.string().max(64), name: z.string().max(80), url: z.string().url(), password: z.string().max(300), searchPrefix: z.string().max(40) });
+const node = z.object({ id: z.string().max(64), name: z.string().max(80), url: z.string().url(), password: z.string().max(300), searchPrefix: z.string().max(80) });
 const cfgSchema = z.object({
   engine: z.enum(["auto", "ytdlp", "lavalink"]),
   cacheDir: z.string().max(500),

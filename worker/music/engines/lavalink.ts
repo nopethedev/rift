@@ -3,6 +3,7 @@ import type { Candidate, MusicConfig, TrackQuery } from "../../../shared/music-p
 import { MATCH_THRESHOLD, scoreCandidate } from "../../../shared/music-match";
 import type { LavalinkNode, LavalinkPool, LavalinkTrack } from "../lavalink";
 import type { VoiceSink } from "../voice-sink";
+import { searchPrefixes } from "../../../shared/lavalink-search";
 import { EngineError, type AudioSource, type Engine } from "./types";
 
 export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | null): Engine {
@@ -29,15 +30,28 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
   };
   const allowed = (cfg: MusicConfig, c: Candidate) => !c.sourceName || cfg.lavalink.allowedSources.includes(c.sourceName);
 
+  // A pasted direct link is loaded as-is (Lavalink's "http" source).
+  const direct = (n: LavalinkNode, url: string) => n.load(url).then((r) => (r.loadType === "track" ? [r.data as LavalinkTrack] : r.loadType === "playlist" ? (r.data as { tracks: LavalinkTrack[] }).tracks : []));
+  // Anything else goes through the node's search prefix(es). Several prefixes are searched at once and merged, so a node
+  // that can search SoundCloud, YouTube, Spotify... isn't limited to one of them; one prefix failing doesn't hide the rest.
+  async function prefixed(n: LavalinkNode, text: string, cfg: MusicConfig): Promise<LavalinkTrack[]> {
+    const prefixes = searchPrefixes(n.cfg.searchPrefix, cfg.lavalink.allowedSources);
+    const settled = await Promise.allSettled(prefixes.map((p) => n.search(p, text)));
+    if (settled.every((r) => r.status === "rejected")) throw (settled[0] as PromiseRejectedResult).reason;
+    const lists = settled.map((r) => (r.status === "fulfilled" ? r.value.filter((t) => !t.info.isStream) : []));
+    const seen = new Set<string>();
+    const out: LavalinkTrack[] = [];
+    for (let i = 0; lists.some((l) => i < l.length); i++) for (const l of lists) { const t = l[i]; if (t && !seen.has(t.encoded)) { seen.add(t.encoded); out.push(t); } }
+    return out;
+  }
+
   async function searchNodes(text: string, cfg: MusicConfig): Promise<Candidate[]> {
     let lastErr: Error | undefined;
     for (const n of usable(cfg)) {
       try {
         await n.waitReady(4000);
-        // A pasted direct link is loaded as-is (Lavalink's "http" source); anything else goes through the node's search prefix.
-        const found = /^https?:\/\//i.test(text) ? await n.load(text).then((r) => (r.loadType === "track" ? [r.data as LavalinkTrack] : r.loadType === "playlist" ? (r.data as { tracks: LavalinkTrack[] }).tracks : [])) : await n.search(n.cfg.searchPrefix || "scsearch", text);
-        const tracks = found.filter((t) => !t.info.isStream);
-        return tracks.map((t) => toCandidate(n, t)).filter((c) => allowed(cfg, c));
+        const tracks = /^https?:\/\//i.test(text) ? await direct(n, text) : await prefixed(n, text, cfg);
+        return tracks.filter((t) => !t.info.isStream).map((t) => toCandidate(n, t)).filter((c) => allowed(cfg, c));
       } catch (e) { lastErr = e as Error; }
     }
     throw new EngineError(lastErr?.message ?? "No Lavalink node reachable", "unavailable");

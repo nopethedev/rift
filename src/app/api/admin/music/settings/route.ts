@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const abs = z.string().trim().min(1).refine((p) => path.isAbsolute(p), "Must be an absolute path");
 const node = z.object({
   id: z.string().trim().regex(/^[a-z0-9_-]{1,32}$/i, "Node id: letters, digits, - and _"), name: z.string().trim().min(1).max(60),
-  url: z.string().trim().url().refine((u) => /^https?:\/\//.test(u), "Must be http(s)"), password: z.string().max(300), searchPrefix: z.string().trim().regex(/^[a-z]{2,20}$/i, "e.g. scsearch, ytsearch"),
+  url: z.string().trim().url().refine((u) => /^https?:\/\//.test(u), "Must be http(s)"), password: z.string().max(300), searchPrefix: z.string().trim().max(80).regex(/^[a-z][a-z ,;]*$/i, "e.g. scsearch, or scsearch,ytsearch, or auto"),
 });
 const schema = z.object({
   musicSource: z.enum(["local", "ondemand", "hybrid"]), musicEngine: z.enum(["auto", "ytdlp", "lavalink"]),

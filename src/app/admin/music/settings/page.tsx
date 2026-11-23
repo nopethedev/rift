@@ -121,7 +121,7 @@ export default function MusicSettingsPage() {
                     <Input label="Name" value={n.name} onChange={(e) => up({ name: e.target.value })} />
                     <Input label="URL" value={n.url} onChange={(e) => up({ url: e.target.value })} placeholder="http://lavalink:2333" />
                     <Input label="Password" type="password" autoComplete="new-password" value={n.password} onChange={(e) => up({ password: e.target.value })} />
-                    <Input label="Search prefix" value={n.searchPrefix} onChange={(e) => up({ searchPrefix: e.target.value })} hint="scsearch, ytsearch…" />
+                    <Input label="Search prefix" value={n.searchPrefix} onChange={(e) => up({ searchPrefix: e.target.value })} hint="auto = every allowed source, or e.g. scsearch,ytsearch,spsearch" />
                     <div className="flex items-end"><Button variant="ghost" aria-label="Remove node" onClick={() => set("musicLavalinkNodes", s.musicLavalinkNodes.filter((_, j) => j !== i))}><X className="size-4" /></Button></div>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
