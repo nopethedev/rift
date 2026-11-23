@@ -65,8 +65,9 @@ r = await j("/api/music/online/genre/132");
 check("genre page has charts", r.body?.genre.name === "Pop" && r.body.tracks.length === 4);
 r = await j("/api/music/online/search?q=Alpha%20Track");
 check("catalogue search returns artists, albums and songs", r.body && "artists" in r.body && r.body.tracks.some((t) => t.title === "Alpha Track"));
+// an id nothing has fetched yet (profiles are cached for 30 min, and the now-playing panel looks up whoever is playing)
 await fetch(CAT + "/__down?on=1");
-r = await j("/api/music/online/artist?id=3");
+r = await j("/api/music/online/artist?id=999");
 check("an unreachable catalogue gives a readable error, not a crash", r.status === 502 && /Deezer|answered 503|Could not reach/.test(r.body?.error ?? ""), `${r.status} ${r.body?.error}`);
 r = await j("/api/music/feed");
 check("the (cached) feed still loads while the catalogue is down", r.status === 200 && r.body.shelves.length > 0);
