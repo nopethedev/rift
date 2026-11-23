@@ -54,7 +54,11 @@ export function SearchView() {
           <SectionTitle><span className="flex items-center gap-2"><CloudDownload className="size-5 text-violet-300" /> On-demand</span></SectionTitle>
           {od.loading && <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="size-4 animate-spin" /> Searching sources…</p>}
           {od.error && <p role="alert" className="text-sm text-amber-300">{od.error}</p>}
-          {od.sources?.filter((x) => !x.ok).map((x) => <p key={x.engine} role="status" className="mb-2 text-xs text-amber-300">{x.engine === "lavalink" ? "Lavalink" : "yt-dlp"} couldn&apos;t be searched{x.error ? `: ${x.error}` : ""}</p>)}
+          {!!od.sources?.length && (
+            <p role="status" data-testid="od-sources" className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+              {od.sources.map((x) => <span key={x.engine} className={x.ok ? undefined : "text-amber-300"}>{x.engine === "lavalink" ? "Lavalink" : "yt-dlp"}: {x.ok ? `${x.count} result${x.count === 1 ? "" : "s"}` : `couldn't be searched${x.error ? ` (${x.error})` : ""}`}</span>)}
+            </p>
+          )}
           {od.items.map((c) => <TrackRow key={c.sourceId} item={candidateRow(c)} onPlay={() => playItems([candidateRow(c).input], { startIndex: 0 })} active={current?.candidate?.sourceId === c.sourceId} />)}
           {!od.loading && !od.error && !od.items.length && <p className="text-sm text-muted">No results from the enabled sources.</p>}
           {!od.loading && !!od.items.length && <p className="mt-2 text-xs text-muted">Playback checks the source&apos;s licence first; tracks that can&apos;t be streamed legally on this server will report why.</p>}
