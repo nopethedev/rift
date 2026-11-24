@@ -11,8 +11,11 @@ type S = {
   musicCacheCleanup: boolean; musicCleanupGraceSec: number; musicFormat: "mp3" | "aac" | "opus"; musicBitrate: number; musicMaxStreams: number; musicMaxDownloads: number;
   musicOnDemandAccess: "admins" | "everyone"; musicRightsAttested: boolean; musicLicensePolicy: "licensed-only" | "attested"; musicSearchProviders: ("youtube" | "soundcloud")[];
   musicLibraryDirs: string[]; musicUploadDir: string; musicLavalinkNodes: Node[]; musicLavalinkAllowedSources: string[]; musicLavalinkPlugins: { dependency: string; repository: string }[];
+  musicLavalinkYoutube: Yt; musicLavalinkLyricsPlugins: boolean; musicLyrics: boolean;
   spotifyClientId: string; spotifyClientSecret: string;
 };
+type Yt = { enabled: boolean; oauth: boolean; refreshToken: string; poToken: string; visitorData: string; cipherUrl: string; cipherPassword: string };
+const PUBLIC_CIPHER = "https://cipher.kikkia.dev/";
 type Test = { ok: boolean; version?: string; sources?: string[]; plugins?: { name: string; version: string }[]; sinkReady?: boolean; bridge?: { ok: boolean; error?: string }; error?: string };
 
 export default function MusicSettingsPage() {
@@ -39,6 +42,13 @@ export default function MusicSettingsPage() {
     setTests((t) => ({ ...t, [n.id]: "busy" }));
     try { const r = await api<Test>("/api/admin/music/lavalink/test", { method: "POST", body: n }); setTests((t) => ({ ...t, [n.id]: r })); }
     catch (e) { setTests((t) => ({ ...t, [n.id]: { ok: false, error: (e as Error).message } })); }
+  }
+  async function fetchToken() {
+    try {
+      const r = await api<{ saved: boolean; note: string }>("/api/admin/music/lavalink/youtube-token", { method: "POST" });
+      setMsg({ ok: r.saved, text: r.note });
+      if (r.saved) setS((c) => (c ? { ...c, musicLavalinkYoutube: { ...c.musicLavalinkYoutube, refreshToken: "••••" } } : c));
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
   }
   async function writeConfig() {
     if (!(await save())) return;
@@ -137,6 +147,45 @@ export default function MusicSettingsPage() {
             <Button size="sm" variant="secondary" onClick={() => set("musicLavalinkNodes", [...s.musicLavalinkNodes, { id: `node${s.musicLavalinkNodes.length + 1}`, name: "Lavalink node", url: "http://", password: "", searchPrefix: "scsearch" }])}><Plus className="size-4" /> Add node</Button>
           </div>
           <Input label="Allowed source types" value={srcText} onChange={(e) => setSrcText(e.target.value)} hint="Lavalink sourceNames that may be played, e.g. http, soundcloud, bandcamp. Lavalink can't read licences, so only list sources you are entitled to stream." />
+          {(() => {
+            const yt = s.musicLavalinkYoutube;
+            const up = (patch: Partial<Yt>) => set("musicLavalinkYoutube", { ...yt, ...patch });
+            const ytAllowed = sources().some((x) => x === "youtube" || x === "youtubemusic");
+            return (
+              <div className="space-y-3 rounded-lg border border-white/10 p-3">
+                <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={yt.enabled} onChange={(e) => up({ enabled: e.target.checked })} className="mt-1 size-4 accent-violet-500" /><span><span className="font-medium">YouTube on the bundled Lavalink</span><span className="block text-xs text-muted">Adds the <code>youtube-source</code> plugin (Lavalink&apos;s built-in YouTube source no longer works and is switched off). Searches YouTube Music first. Nodes you didn&apos;t start with Rift need this set up on their side.</span></span></label>
+                {yt.enabled && (
+                  <>
+                    {!ytAllowed && <p className="flex flex-wrap items-center gap-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">&ldquo;youtube&rdquo; isn&apos;t in the allowed source types below, so YouTube results are searched but never played. <button type="button" onClick={() => setSrcText((t) => [t.trim(), "youtube"].filter(Boolean).join(", "))} className="font-semibold underline">Allow YouTube</button></p>}
+                    <p className="text-xs text-muted">Set the node&apos;s search prefix to <code>auto</code> (or <code>ytmsearch, scsearch</code>) so Rift searches YouTube on it.</p>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
+                      <Input label="Remote cipher server" value={yt.cipherUrl} placeholder={PUBLIC_CIPHER} onChange={(e) => up({ cipherUrl: e.target.value })} hint="Deciphers YouTube's stream signatures, the usual reason YouTube tracks won't play. The default is a free public yt-cipher instance (rate limited); run your own for reliability. Empty = the plugin deciphers itself." />
+                      <Input label="Cipher password" type="password" autoComplete="new-password" value={yt.cipherPassword} onChange={(e) => up({ cipherPassword: e.target.value })} hint="Only for your own yt-cipher (its API_TOKEN)." />
+                    </div>
+                    <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={yt.oauth} onChange={(e) => up({ oauth: e.target.checked })} className="mt-1 size-4 accent-violet-500" /><span><span className="font-medium">Sign in to YouTube (OAuth)</span><span className="block text-xs text-muted">The most reliable fix for &ldquo;Sign in to confirm you&apos;re not a bot&rdquo;. <b className="text-amber-200">Use a throwaway Google account</b>: accounts used this way can get flagged. After writing the config and restarting, run <code>docker compose logs -f lavalink</code>, open the google.com/device link it prints and enter the code. Then press &ldquo;Get token from node&rdquo; so the sign-in survives restarts.</span></span></label>
+                    {yt.oauth && (
+                      <div className="flex items-end gap-2">
+                        <Input label="Refresh token" type="password" autoComplete="new-password" value={yt.refreshToken} placeholder="filled in after the sign-in" onChange={(e) => up({ refreshToken: e.target.value })} />
+                        <Button size="sm" variant="secondary" onClick={fetchToken}>Get token from node</Button>
+                      </div>
+                    )}
+                    <details className="text-xs text-muted">
+                      <summary className="cursor-pointer text-white/70">poToken (advanced, instead of signing in)</summary>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <Input label="poToken" type="password" autoComplete="new-password" value={yt.poToken} onChange={(e) => up({ poToken: e.target.value })} />
+                        <Input label="visitorData" value={yt.visitorData} onChange={(e) => up({ visitorData: e.target.value })} />
+                      </div>
+                      <p className="mt-1">Used by the WEB clients only, and only when both are set. Tokens expire; signing in is easier.</p>
+                    </details>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+          <div className="space-y-2 rounded-lg border border-white/10 p-3">
+            <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={s.musicLyrics} onChange={(e) => set("musicLyrics", e.target.checked)} className="mt-1 size-4 accent-violet-500" /><span><span className="font-medium">Lyrics in the player</span><span className="block text-xs text-muted">Looked up through a Lavalink node with the LavaLyrics plugin (any song, also library and yt-dlp ones). Time-synced where available.</span></span></label>
+            <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={s.musicLavalinkLyricsPlugins} onChange={(e) => set("musicLavalinkLyricsPlugins", e.target.checked)} className="mt-1 size-4 accent-violet-500" /><span><span className="font-medium">Lyrics plugins on the bundled Lavalink</span><span className="block text-xs text-muted">Adds LavaLyrics + LavaSrc with LRCLIB (synced) and YouTube Music lyrics. No accounts needed; LavaSrc&apos;s other sources stay off.</span></span></label>
+          </div>
           <div>
             <p className="mb-1.5 text-sm font-medium text-white/80">Plugins for the bundled Lavalink</p>
             <div className="space-y-2">
@@ -148,7 +197,7 @@ export default function MusicSettingsPage() {
                 </div>
               ))}
               <div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={() => set("musicLavalinkPlugins", [...s.musicLavalinkPlugins, { dependency: "", repository: "" }])}><Plus className="size-4" /> Add plugin</Button><Button size="sm" variant="secondary" onClick={writeConfig}>Save &amp; write Lavalink config</Button></div>
-              <p className="text-xs text-muted">Writes the bundled node&apos;s <code>application.yml</code> (password + plugins) to the shared config volume; restart the <code>lavalink</code> container to apply.</p>
+              <p className="text-xs text-muted">Writes the bundled node&apos;s <code>application.yml</code> (password, plugins, YouTube and lyrics settings) to the shared config volume; restart the <code>lavalink</code> container to apply (<code>docker compose restart lavalink</code>). Plugins you list here win over Rift&apos;s defaults, e.g. to pin another version.</p>
             </div>
           </div>
         </Card>

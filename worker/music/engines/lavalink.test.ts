@@ -40,10 +40,10 @@ describe("lavalink engine: several search prefixes per node", () => {
     expect(found.map((c) => c.sourceName)).toEqual(["soundcloud", "youtube", "soundcloud", "youtube"]);
   });
 
-  it("'auto' searches one prefix per allowed source", async () => {
+  it("'auto' searches the allowed sources' prefixes (YouTube = YouTube Music + YouTube)", async () => {
     const { engine, calls } = fake(data, "auto");
     const found = await engine.search("song", cfg(["soundcloud", "youtube", "http"]), 10);
-    expect(calls.sort()).toEqual(["scsearch", "ytsearch"]);
+    expect(calls.sort()).toEqual(["scsearch", "ytmsearch", "ytsearch"]);
     expect(new Set(found.map((c) => c.sourceName))).toEqual(new Set(["soundcloud", "youtube"]));
   });
 
@@ -69,5 +69,35 @@ describe("lavalink engine: several search prefixes per node", () => {
     const { engine } = fake(data, "scsearch,ytsearch");
     const found = await engine.search("song", cfg(["soundcloud"]), 10);
     expect(found.every((c) => c.sourceName === "soundcloud")).toBe(true);
+  });
+});
+
+describe("explainTrackError", () => {
+  it("turns YouTube's refusals into what to change", async () => {
+    const { explainTrackError } = await import("./lavalink");
+    expect(explainTrackError("Sign in to confirm you're not a bot", "youtube")).toMatch(/sign-in|poToken/);
+    expect(explainTrackError("Must find sig function from script", "youtube")).toMatch(/remote cipher/);
+    expect(explainTrackError("All clients failed to load the item", "youtube")).toMatch(/clients/);
+    expect(explainTrackError("Something broke", "soundcloud")).toBe("Lavalink: Something broke");
+  });
+});
+
+describe("lavalink engine: playback events", () => {
+  it("a TrackStuckEvent is only a warning: the song keeps going and ends normally", async () => {
+    const { EventEmitter } = await import("node:events");
+    const { PassThrough } = await import("node:stream");
+    const node = Object.assign(new EventEmitter(), { cfg: { id: "n1", name: "fake" }, online: true, play: async () => {}, destroy: async () => {} });
+    const pool = { sync() {}, ordered: () => [node], get: () => node } as unknown as LavalinkPool;
+    const ticket = { guildId: "g1", voice: {}, connected: Promise.resolve(), stream: new PassThrough(), close() {} };
+    const engine = lavalinkEngine(pool, () => ({ createTicket: () => ticket }) as unknown as VoiceSink);
+    const src = await engine.open({ engine: "lavalink", sourceId: "x", title: "t", artist: "a", durationSec: 1, url: "", score: 1, encoded: "e", nodeId: "n1", sourceName: "youtube" }, cfg(["youtube"]));
+    let settled: string | null = null;
+    src.done.then(() => (settled = "ok"), (e: Error) => (settled = e.message));
+    node.emit("event", { type: "TrackStuckEvent", guildId: "g1", thresholdMs: 10000 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(settled).toBeNull();
+    node.emit("event", { type: "TrackEndEvent", guildId: "g1", reason: "finished" });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(settled).toBe("ok");
   });
 });

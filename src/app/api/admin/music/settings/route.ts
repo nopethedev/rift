@@ -3,7 +3,7 @@ import path from "node:path";
 import { mkdir } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { route, body, HttpError } from "@/server/api";
-import { getSettings, publicSettings, updateSettings, type Settings } from "@/server/settings";
+import { defaultSettings, getSettings, publicSettings, updateSettings, type Settings } from "@/server/settings";
 
 export const dynamic = "force-dynamic";
 const abs = z.string().trim().min(1).refine((p) => path.isAbsolute(p), "Must be an absolute path");
@@ -23,6 +23,11 @@ const schema = z.object({
   musicLibraryDirs: z.array(abs).min(1).max(20), musicUploadDir: abs,
   musicLavalinkNodes: z.array(node).max(20), musicLavalinkAllowedSources: z.array(z.string().trim().regex(/^[a-z0-9_-]{2,30}$/i)).max(30),
   musicLavalinkPlugins: z.array(z.object({ dependency: z.string().trim().regex(/^[\w.-]+:[\w.-]+:[\w.+-]+$/, "group:artifact:version"), repository: z.string().trim().max(300).refine((u) => !u || /^https?:\/\//.test(u), "Must be http(s)") })).max(20),
+  musicLavalinkYoutube: z.object({
+    enabled: z.boolean(), oauth: z.boolean(), refreshToken: z.string().trim().max(500), poToken: z.string().trim().max(2000), visitorData: z.string().trim().max(500),
+    cipherUrl: z.string().trim().max(300).refine((u) => !u || /^https?:\/\//.test(u), "Must be http(s)"), cipherPassword: z.string().max(300),
+  }),
+  musicLavalinkLyricsPlugins: z.boolean(), musicLyrics: z.boolean(),
   spotifyClientId: z.string().trim().max(100), spotifyClientSecret: z.string().trim().max(200),
 }).partial();
 
@@ -36,6 +41,13 @@ export const PUT = route("admin", async ({ req }) => {
   const cur = await getSettings();
   const patch: Partial<Settings> = { ...d } as Partial<Settings>;
   if (d.spotifyClientSecret?.startsWith("••••")) delete patch.spotifyClientSecret;
+  if (d.musicLavalinkYoutube) {
+    // masked placeholders keep the stored secret
+    const was = { ...defaultSettings().musicLavalinkYoutube, ...cur.musicLavalinkYoutube };
+    const y = { ...d.musicLavalinkYoutube };
+    for (const k of ["refreshToken", "poToken", "cipherPassword"] as const) if (y[k].startsWith("••••")) y[k] = was[k];
+    patch.musicLavalinkYoutube = y;
+  }
   if (d.musicLavalinkNodes) {
     const ids = new Set<string>();
     patch.musicLavalinkNodes = d.musicLavalinkNodes.map((n) => {

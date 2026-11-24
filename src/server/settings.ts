@@ -83,9 +83,28 @@ export interface Settings {
   musicLavalinkNodes: { id: string; name: string; url: string; password: string; searchPrefix: string }[];
   musicLavalinkAllowedSources: string[];
   musicLavalinkPlugins: { dependency: string; repository: string }[];
+  /** YouTube on the bundled Lavalink (youtube-source plugin). The built-in YouTube source is broken, so it's always off. */
+  musicLavalinkYoutube: LavalinkYoutube;
+  /** The bundled Lavalink gets LavaLyrics + LavaSrc (YouTube Music and LRCLIB lyrics, no accounts needed). */
+  musicLavalinkLyricsPlugins: boolean;
+  /** Show lyrics in the player (looked up through a Lavalink node that has LavaLyrics). */
+  musicLyrics: boolean;
   spotifyClientId: string;
   spotifyClientSecret: string;
 }
+
+export interface LavalinkYoutube {
+  enabled: boolean;
+  /** Sign in with a (burner) Google account: the most reliable way past YouTube's bot checks. */
+  oauth: boolean;
+  refreshToken: string;
+  poToken: string;
+  visitorData: string;
+  /** yt-cipher server that deciphers YouTube's stream signatures (the usual cause of "can't play" on YouTube). */
+  cipherUrl: string;
+  cipherPassword: string;
+}
+export const PUBLIC_YT_CIPHER = "https://cipher.kikkia.dev/";
 
 export const defaultSettings = (): Settings => ({
   setupComplete: false,
@@ -143,6 +162,9 @@ export const defaultSettings = (): Settings => ({
   musicLavalinkNodes: process.env.LAVALINK_URL ? [{ id: "bundled", name: "Bundled Lavalink", url: process.env.LAVALINK_URL, password: process.env.LAVALINK_PASSWORD || "youshallnotpass", searchPrefix: "scsearch" }] : [],
   musicLavalinkAllowedSources: ["soundcloud", "bandcamp"],
   musicLavalinkPlugins: [],
+  musicLavalinkYoutube: { enabled: true, oauth: false, refreshToken: "", poToken: "", visitorData: "", cipherUrl: PUBLIC_YT_CIPHER, cipherPassword: "" },
+  musicLavalinkLyricsPlugins: true,
+  musicLyrics: true,
   spotifyClientId: process.env.SPOTIFY_CLIENT_ID || "",
   spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || "",
 });
@@ -176,5 +198,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
 
 /** Redacted version safe to send to the browser. */
 export function publicSettings(s: Settings) {
-  return { ...s, musicLavalinkNodes: s.musicLavalinkNodes.map((n) => ({ ...n, password: n.password ? "••••" : "" })), spotifyClientSecret: s.spotifyClientSecret ? "••••" : "", tmdbApiKey: s.tmdbApiKey ? "••••" + s.tmdbApiKey.slice(-4) : "", torznabApiKey: s.torznabApiKey ? "••••" : "", opensubtitlesApiKey: s.opensubtitlesApiKey ? "••••" + s.opensubtitlesApiKey.slice(-4) : "", opensubtitlesPassword: s.opensubtitlesPassword ? "••••" : "" };
+  const yt = { ...defaultSettings().musicLavalinkYoutube, ...s.musicLavalinkYoutube };
+  const mask = (v: string) => (v ? "••••" : "");
+  return { ...s, musicLavalinkYoutube: { ...yt, refreshToken: mask(yt.refreshToken), poToken: mask(yt.poToken), cipherPassword: mask(yt.cipherPassword) }, musicLavalinkNodes: s.musicLavalinkNodes.map((n) => ({ ...n, password: n.password ? "••••" : "" })), spotifyClientSecret: s.spotifyClientSecret ? "••••" : "", tmdbApiKey: s.tmdbApiKey ? "••••" + s.tmdbApiKey.slice(-4) : "", torznabApiKey: s.torznabApiKey ? "••••" : "", opensubtitlesApiKey: s.opensubtitlesApiKey ? "••••" + s.opensubtitlesApiKey.slice(-4) : "", opensubtitlesPassword: s.opensubtitlesPassword ? "••••" : "" };
 }

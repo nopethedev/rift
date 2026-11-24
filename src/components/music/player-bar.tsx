@@ -1,11 +1,16 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { AlertTriangle, ChevronDown, CloudDownload, ListMusic, Loader2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Trash2, Volume2, VolumeX, X, Infinity as Auto, ArrowUp, ArrowDown } from "lucide-react";
+import { AlertTriangle, ChevronDown, CloudDownload, ListMusic, Loader2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Trash2, Volume2, VolumeX, X, Infinity as Auto, ArrowUp, ArrowDown, MicVocal } from "lucide-react";
 import { fmtTime, type QueueItem } from "@/lib/music-types";
 import { Cover } from "./parts";
 import { useMusic } from "./player-provider";
 import { ArtistCard, CurrentHeart, SidePanelToggle } from "./side-panel";
+import { LyricsView } from "./lyrics";
+
+type Tab = "queue" | "lyrics";
+/** Opens the full-screen player from anywhere (e.g. the side panel's lyrics card). */
+export const openNowPlaying = (tab: Tab = "queue") => window.dispatchEvent(new CustomEvent<Tab>("rift:now-playing", { detail: tab }));
 
 function Seek({ className }: { className?: string }) {
   const { position, duration, seek, capture, play } = useMusic();
@@ -61,13 +66,18 @@ function Controls({ big }: { big?: boolean }) {
 
 export function PlayerBar() {
   const { current, queue, volume, setVolume, muted, setMuted } = useMusic();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<Tab | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setOpen((e as CustomEvent<Tab>).detail ?? "queue");
+    window.addEventListener("rift:now-playing", on);
+    return () => window.removeEventListener("rift:now-playing", on);
+  }, []);
   if (!current) return null;
   return (
     <>
       <div className="glass fixed inset-x-0 bottom-[calc(3.8rem+env(safe-area-inset-bottom))] z-30 border-t border-white/10 md:bottom-0" data-testid="music-bar">
         <div className="mx-auto grid max-w-[1800px] grid-cols-[1fr_auto] items-center gap-2 py-2 pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] md:pl-6 md:pr-6">
-          <button onClick={() => setOpen(true)} className="flex min-w-0 items-center gap-3 text-left" aria-label="Open now playing">
+          <button onClick={() => setOpen("queue")} className="flex min-w-0 items-center gap-3 text-left" aria-label="Open now playing">
             <Cover src={current.artworkUrl} className="size-11 md:size-12" />
             <span className="min-w-0"><span className="block truncate text-sm font-semibold">{current.title}</span><span className="block truncate text-xs text-muted">{current.artist}</span><StatusLine className="md:hidden" /></span>
           </button>
@@ -77,14 +87,15 @@ export function PlayerBar() {
             <CurrentHeart />
             <button aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted(!muted)} className="text-white/70 hover:text-white">{muted || volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}</button>
             <input type="range" aria-label="Volume" className="rift-range w-24" min={0} max={1} step={0.02} value={muted ? 0 : volume} onChange={(e) => { setMuted(false); setVolume(Number(e.target.value)); }} style={{ ["--track" as string]: `linear-gradient(90deg,#fff ${(muted ? 0 : volume) * 100}%,#ffffff33 ${(muted ? 0 : volume) * 100}%)` }} />
+            <button aria-label="Lyrics" title="Lyrics" onClick={() => setOpen("lyrics")} className="rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white"><MicVocal className="size-5" /></button>
             <SidePanelToggle />
-            <button aria-label="Queue" onClick={() => setOpen(true)} className="relative rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white"><ListMusic className="size-5" />{!!queue?.items.length && <span className="absolute -right-0.5 -top-0.5 rounded-full bg-accent px-1 text-[9px] font-bold">{queue.items.length}</span>}</button>
+            <button aria-label="Queue" onClick={() => setOpen("queue")} className="relative rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white"><ListMusic className="size-5" />{!!queue?.items.length && <span className="absolute -right-0.5 -top-0.5 rounded-full bg-accent px-1 text-[9px] font-bold">{queue.items.length}</span>}</button>
           </div>
           <div className="md:hidden"><MiniControls /></div>
         </div>
         <MiniProgress />
       </div>
-      {open && <NowPlaying onClose={() => setOpen(false)} />}
+      {open && <NowPlaying tab={open} onTab={setOpen} onClose={() => setOpen(null)} />}
     </>
   );
 }
@@ -120,7 +131,7 @@ function QueueRow({ it, idx, last, active }: { it: QueueItem; idx: number; last:
   );
 }
 
-export function NowPlaying({ onClose }: { onClose: () => void }) {
+export function NowPlaying({ onClose, tab = "queue", onTab }: { onClose: () => void; tab?: Tab; onTab?: (t: Tab) => void }) {
   const { current, queue, setAutoplay, clearQueue, play } = useMusic();
   if (!current) return null;
   const items = queue?.items ?? [];
@@ -146,9 +157,14 @@ export function NowPlaying({ onClose }: { onClose: () => void }) {
           </div>
           <ArtistCard artist={current.artist} className="w-full text-left" />
         </div>
-        <div className="min-w-0">
-          <div className="mb-2 flex items-center justify-between"><h3 className="font-bold">Queue <span className="text-sm font-normal text-muted">· {items.length}</span></h3><button onClick={() => clearQueue().then(onClose)} className="flex items-center gap-1 text-xs text-muted hover:text-red-300"><Trash2 className="size-3.5" /> Clear</button></div>
-          <ul className="space-y-0.5">{items.map((it, i) => <QueueRow key={it.id} it={it} idx={i} last={i === items.length - 1} active={i === idx} />)}</ul>
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="flex gap-1 rounded-full bg-white/5 p-1" role="tablist">
+              {([["queue", `Queue · ${items.length}`], ["lyrics", "Lyrics"]] as const).map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => onTab?.(k)} className={clsx("rounded-full px-3 py-1.5 text-sm font-semibold", tab === k ? "bg-white text-black" : "text-white/70 hover:text-white")}>{label}</button>)}
+            </div>
+            {tab === "queue" && <button onClick={() => clearQueue().then(onClose)} className="flex items-center gap-1 text-xs text-muted hover:text-red-300"><Trash2 className="size-3.5" /> Clear</button>}
+          </div>
+          {tab === "queue" ? <ul className="space-y-0.5">{items.map((it, i) => <QueueRow key={it.id} it={it} idx={i} last={i === items.length - 1} active={i === idx} />)}</ul> : <LyricsView className="max-h-[70dvh] min-h-64 rounded-2xl bg-white/[0.03] px-5 md:max-h-[calc(100dvh-9rem)]" />}
         </div>
       </div>
     </div>

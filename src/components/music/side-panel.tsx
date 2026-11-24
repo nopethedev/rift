@@ -9,6 +9,7 @@ import { artSrc, fmtCount, fmtTime, type ArtistProfile } from "@/lib/music-types
 import { upcoming } from "@/lib/music-queue";
 import { Cover, HeartButton } from "./parts";
 import { useMusic } from "./player-provider";
+import { LyricsCard } from "./lyrics";
 
 // ---- open / closed, remembered per browser ----
 const KEY = "rift-music-side-panel";
@@ -106,7 +107,7 @@ export function ArtistCard({ artist, className }: { artist: string; className?: 
   );
 }
 
-/** Right-hand "Now playing" column (Music app, large screens): the track, the artist card, what's next. No lyrics. */
+/** Right-hand "Now playing" column (Music app, large screens): the track, lyrics, the artist card, what's next. */
 export function NowPlayingPanel() {
   const { current, queue, playQueueItem } = useMusic();
   const visible = useSidePanelVisible();
@@ -127,6 +128,7 @@ export function NowPlayingPanel() {
           </div>
           <CurrentHeart />
         </div>
+        <LyricsCard onOpen={() => window.dispatchEvent(new CustomEvent("rift:now-playing", { detail: "lyrics" }))} />
         <ArtistCard artist={current.artist} />
         {!!next.length && (
           <section aria-label="Next in queue" className="rounded-xl bg-surface-2 p-3">

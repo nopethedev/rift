@@ -3,7 +3,7 @@ import type { Candidate, MusicConfig, TrackQuery } from "../../../shared/music-p
 import { MATCH_THRESHOLD, scoreCandidate } from "../../../shared/music-match";
 import type { LavalinkNode, LavalinkPool, LavalinkTrack } from "../lavalink";
 import type { VoiceSink } from "../voice-sink";
-import { searchPrefixes } from "../../../shared/lavalink-search";
+import { searchPrefixes, sourceAllowed } from "../../../shared/lavalink-search";
 import { EngineError, type AudioSource, type Engine } from "./types";
 
 export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | null): Engine {
@@ -28,7 +28,7 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
     if (!nodes.length) throw new EngineError("No Lavalink nodes are configured", "unavailable");
     return nodes;
   };
-  const allowed = (cfg: MusicConfig, c: Candidate) => !c.sourceName || cfg.lavalink.allowedSources.includes(c.sourceName);
+  const allowed = (cfg: MusicConfig, c: Candidate) => sourceAllowed(cfg.lavalink.allowedSources, c.sourceName);
 
   // A pasted direct link is loaded as-is (Lavalink's "http" source).
   const direct = (n: LavalinkNode, url: string) => n.load(url).then((r) => (r.loadType === "track" ? [r.data as LavalinkTrack] : r.loadType === "playlist" ? (r.data as { tracks: LavalinkTrack[] }).tracks : []));
@@ -94,10 +94,13 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
         if (m.type === "TrackEndEvent") {
           // Let the final RTP packets drain, then close the stream.
           setTimeout(() => { ticket.close(); m.reason === "finished" || m.reason === "stopped" ? finish() : fail(new EngineError(`Lavalink ended the track: ${m.reason}`)); }, 400).unref();
-        } else if (m.type === "TrackExceptionEvent" || m.type === "TrackStuckEvent") {
-          fail(new EngineError(`Lavalink: ${m.exception?.message ?? m.type}`));
+        } else if (m.type === "TrackExceptionEvent") {
+          fail(new EngineError(explainTrackError(m.exception?.message ?? "the track failed", c.sourceName)));
           ticket.close();
         }
+        // TrackStuckEvent is only a warning (no audio for a few seconds: YouTube buffering, a slow node). The track
+        // usually carries on; if it really stops, Lavalink ends it or the cache's stall watchdog does. Treating it as fatal
+        // used to restart the song on another recording half-way through.
       };
       node.on("event", onEvent);
       const cleanup = () => { node.off("event", onEvent); void node.destroy(ticket.guildId); };
@@ -125,4 +128,16 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
       return { stream: ticket.stream, realtime: true, done, close: () => { ticket.close(); fail(new EngineError("closed")); } };
     },
   };
+}
+
+/** Lavalink's exception text -> what to change. YouTube failures almost always mean bot checks or signature deciphering. */
+export function explainTrackError(msg: string, sourceName?: string): string {
+  const yt = /youtube/i.test(sourceName ?? "") || /youtube/i.test(msg);
+  if (yt && /sign in|log ?in|not a bot|bot|age.?restrict|confirm your age|requires login/i.test(msg))
+    return `YouTube refused the node ("${msg.slice(0, 120)}"). Turn on the YouTube sign-in (burner account) or add a poToken under Admin → Music → Settings → Lavalink, write the config and restart lavalink.`;
+  if (yt && /cipher|signature|sig function|decipher|n function|script/i.test(msg))
+    return `YouTube changed its player and the node couldn't decipher the stream ("${msg.slice(0, 120)}"). Set a remote cipher server under Admin → Music → Settings → Lavalink (or update the youtube plugin), write the config and restart lavalink.`;
+  if (yt && /all clients failed|no client|unavailable|403|forbidden/i.test(msg))
+    return `None of the node's YouTube clients could play this ("${msg.slice(0, 120)}"). Update the youtube plugin, set a remote cipher server or turn on the sign-in.`;
+  return `Lavalink: ${msg}`;
 }

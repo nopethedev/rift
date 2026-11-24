@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { searchPrefixes } from "./lavalink-search";
+import { searchPrefixes, sourceAllowed } from "./lavalink-search";
 
 describe("searchPrefixes", () => {
   it("defaults to scsearch", () => {
@@ -13,11 +13,21 @@ describe("searchPrefixes", () => {
   });
   it("drops junk tokens", () => expect(searchPrefixes("scsearch, bad:prefix, x")).toEqual(["scsearch"]));
   it("auto derives prefixes from the allowed sources", () => {
-    expect(searchPrefixes("auto", ["soundcloud", "bandcamp", "youtube", "http"])).toEqual(["scsearch", "bcsearch", "ytsearch"]);
+    expect(searchPrefixes("auto", ["soundcloud", "bandcamp", "youtube", "http"])).toEqual(["scsearch", "bcsearch", "ytmsearch", "ytsearch"]);
   });
   it("auto with nothing mappable falls back to scsearch", () => expect(searchPrefixes("auto", ["http"])).toEqual(["scsearch"]));
   it("auto can be combined with explicit prefixes", () => {
     expect(searchPrefixes("auto, dzsearch", ["soundcloud"])).toEqual(["scsearch", "dzsearch"]);
   });
   it("caps the number of prefixes", () => expect(searchPrefixes("aa,bb,cc,dd,ee,ff,gg,hh")).toHaveLength(6));
+});
+
+describe("sourceAllowed", () => {
+  it("matches names case-insensitively and treats youtube / youtubemusic as one", () => {
+    expect(sourceAllowed(["SoundCloud"], "soundcloud")).toBe(true);
+    expect(sourceAllowed(["soundcloud"], "youtube")).toBe(false);
+    expect(sourceAllowed(["youtubemusic"], "youtube")).toBe(true);
+    expect(sourceAllowed(["youtube"], "youtube")).toBe(true);
+    expect(sourceAllowed([], undefined)).toBe(true);
+  });
 });

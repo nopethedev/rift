@@ -54,6 +54,9 @@ export interface ArtistProfile {
   albumsError?: string | null;
   related: CatArtist[];
 }
+/** Lyrics from LavaLyrics. `lines` (ms timestamps) only when time-synced; otherwise just `text`. */
+export interface Lyrics { provider: string | null; source: string | null; synced: boolean; lines: { t: number; d: number | null; text: string }[]; text: string | null }
+export interface LyricsResult { lyrics: Lyrics | null; reason?: string }
 export const catInput = (t: CatTrack): ItemInput => ({ title: t.title, artist: t.artist, album: t.album, durationSec: t.durationSec, artworkUrl: t.artworkUrl });
 export const fmtCount = (n: number | null | undefined) => (n == null ? "" : n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K` : String(n));
 
