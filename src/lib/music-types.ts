@@ -50,6 +50,8 @@ export interface ArtistProfile {
   bio: { text: string; url: string | null } | null;
   topTracks: CatTrack[];
   albums: CatAlbum[];
+  /** Set when the release list couldn't be loaded (the count above may still say there are some). */
+  albumsError?: string | null;
   related: CatArtist[];
 }
 export const catInput = (t: CatTrack): ItemInput => ({ title: t.title, artist: t.artist, album: t.album, durationSec: t.durationSec, artworkUrl: t.artworkUrl });

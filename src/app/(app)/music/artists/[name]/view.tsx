@@ -141,13 +141,13 @@ export function ArtistView({ name, id }: { name: string; id?: string }) {
           </section>
         )}
 
-        {!!p?.albums.length && (
+        {!!p && (!!p.albums.length || !!p.albumsError || !!p.artist.albums) && (
           <section className="mt-6">
             <SectionTitle action={
               <div className="flex gap-1 rounded-full bg-white/5 p-1" role="tablist">{([["all", "All"], ["album", "Albums"], ["single", "Singles & EPs"]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={disco === k} onClick={() => setDisco(k)} className={clsx("rounded-full px-3 py-2 text-xs font-medium pointer-fine:py-1", disco === k ? "bg-white text-black" : "text-white/70 hover:text-white")}>{l}</button>)}</div>
             }>Discography</SectionTitle>
             <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">{albums.map((a) => <CatAlbumCard key={a.id} a={a} />)}</div>
-            {!albums.length && <p className="text-sm text-muted">Nothing in this category.</p>}
+            {!albums.length && <p className="text-sm text-muted">{p.albumsError ? `Couldn't load the releases (${p.albumsError}). Reload the page to try again.` : p.albums.length ? "Nothing in this category." : "No releases found for this artist."}</p>}
           </section>
         )}
 

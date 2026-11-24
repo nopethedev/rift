@@ -81,6 +81,35 @@ describe("artists", () => {
   });
 });
 
+describe("artist releases", () => {
+  it("does not cache a Deezer quota error and retries it", async () => {
+    let n = 0;
+    routes = { "/artist/7": art, "/artist/7/top": D([]), "/artist/7/related": D([]) };
+    const base = globalThis.fetch;
+    vi.stubGlobal("fetch", async (u: string | URL) => {
+      if (String(u).includes("/artist/7/albums")) return new Response(JSON.stringify(n++ === 0 ? { error: { type: "Exception", message: "Quota limit exceeded", code: 4 } } : D([{ id: 1, title: "Homework", release_date: "1997-01-20", record_type: "album" }])), { status: 200 });
+      return base(u);
+    });
+    const p = await artistProfile("7");
+    expect(p.albums.map((a) => [a.title, a.artist])).toEqual([["Homework", "Daft Punk"]]);
+    expect(p.albumsError).toBeNull();
+  }, 10_000);
+
+  it("falls back to an album search on the artist; reports a failure instead of an empty list", async () => {
+    routes = { "/artist/7": art, "/artist/7/top": D([]), "/artist/7/related": D([]), "/artist/7/albums": { error: { type: "DataException", message: "no data", code: 800 } }, "/search/album": D([{ id: 5, title: "Random Access Memories", artist: { id: 7, name: "Daft Punk" }, record_type: "album" }, { id: 6, title: "Tribute", artist: { id: 99, name: "Daft Punk Tribute" } }]) };
+    const p = await artistProfile("7");
+    expect(p.albums.map((a) => a.title)).toEqual(["Random Access Memories"]);
+    clearOnlineCache();
+    routes = { "/artist/7": art, "/artist/7/top": D([]), "/artist/7/related": D([]), "/artist/7/albums": { error: { message: "no data", code: 800 } }, "/search/album": D([]) };
+    expect((await artistProfile("7")).albumsError).toMatch(/no data/);
+  });
+
+  it("keeps non-Latin titles apart and a single named like its album", async () => {
+    routes = { "/artist/7": art, "/artist/7/top": D([]), "/artist/7/related": D([]), "/artist/7/albums": D([{ id: 1, title: "!!!", record_type: "album" }, { id: 2, title: "???", record_type: "album" }, { id: 3, title: "Discovery", record_type: "album", release_date: "2001-01-01" }, { id: 4, title: "Discovery", record_type: "single", release_date: "2000-01-01" }]) };
+    expect((await artistProfile("7")).albums).toHaveLength(4);
+  });
+});
+
 describe("findAlbumArt", () => {
   it("uses the album match, requires the right artist, falls back to iTunes", async () => {
     routes = { "/search/album": D([{ id: 1, title: "Discovery", artist: { name: "Someone Else" }, cover_xl: "https://cdn.dzcdn.net/images/cover/wrong/1000x1000.jpg" }, { id: 2, title: "Discovery", artist: { name: "Daft Punk" }, cover_xl: "https://cdn.dzcdn.net/images/cover/right/1000x1000.jpg" }]) };

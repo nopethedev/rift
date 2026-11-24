@@ -30,7 +30,8 @@ async function gate() {
   if (at > now) await new Promise((r) => setTimeout(r, at - now));
 }
 
-async function getJson<T>(url: string, ttlMs: number, headers: Record<string, string> = {}): Promise<T> {
+/** `reject` returns an error message for a 200 answer that must not be cached (e.g. Deezer's in-body quota error). */
+async function getJson<T>(url: string, ttlMs: number, headers: Record<string, string> = {}, reject?: (v: T) => string | null): Promise<T> {
   const hit = st.cache.get(url);
   if (hit && Date.now() - hit.at < ttlMs) return hit.v as T;
   let p = st.inflight.get(url) as Promise<T> | undefined;
@@ -40,6 +41,8 @@ async function getJson<T>(url: string, ttlMs: number, headers: Record<string, st
       const res = await fetch(url, { headers: { accept: "application/json", "user-agent": "Rift/1.0 (self-hosted media server)", ...headers }, signal: AbortSignal.timeout(9000) }).catch((e: Error) => { throw new OnlineError(`Could not reach ${new URL(url).host}: ${e.cause instanceof Error ? e.cause.message : e.message}`); });
       if (!res.ok) throw new OnlineError(`${new URL(url).host} answered ${res.status}`);
       const v = (await res.json().catch(() => { throw new OnlineError(`${new URL(url).host} sent invalid JSON`); })) as T;
+      const bad = reject?.(v);
+      if (bad) throw new OnlineError(bad);
       if (st.cache.size >= MAX_CACHE) st.cache.delete(st.cache.keys().next().value!);
       st.cache.set(url, { at: Date.now(), v });
       return v;
@@ -50,10 +53,20 @@ async function getJson<T>(url: string, ttlMs: number, headers: Record<string, st
 }
 
 interface DzErr { error?: { type?: string; message?: string; code?: number } }
+const dzError = (v: DzErr) => (v && typeof v === "object" && v.error ? `Deezer: ${v.error.message ?? v.error.type ?? "error"}` : null);
+/**
+ * Deezer answers errors with HTTP 200 and an `error` body. Those are never cached (a cached "Quota limit exceeded"
+ * used to blank an artist's releases for hours); the quota error (code 4) is retried after a short pause.
+ */
 async function dz<T>(path: string, ttlMs = 30 * 60_000): Promise<T> {
-  const v = await getJson<T & DzErr>(`${DZ()}${path}`, ttlMs);
-  if (v && typeof v === "object" && "error" in v && v.error) throw new OnlineError(`Deezer: ${v.error.message ?? v.error.type ?? "error"}`);
-  return v;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await getJson<T & DzErr>(`${DZ()}${path}`, ttlMs, {}, dzError);
+    } catch (e) {
+      if (attempt >= 2 || !(e instanceof OnlineError) || !/quota/i.test(e.message)) throw e;
+      await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+    }
+  }
 }
 const enc = encodeURIComponent;
 const HOUR = 3600_000;
@@ -134,19 +147,44 @@ export async function artistBio(name: string): Promise<{ text: string; url: stri
 /** Same song listed twice (single + album version): keep the first (= the more popular) one. */
 const dedupeSongs = (tracks: CatTrack[]): CatTrack[] => { const seen = new Set<string>(); return tracks.filter((t) => { const k = `${normalize(t.title)}|${normalize(t.artist)}`; if (seen.has(k)) return false; seen.add(k); return true; }); };
 
+/** Every release of an artist (Deezer pages at 100). Falls back to an album search on the artist when the list fails. */
+async function artistAlbums(artistId: string, name: string): Promise<{ albums: CatAlbum[]; error: string | null }> {
+  const own = (x: Raw) => ({ ...x, artist: x.artist ?? { id: artistId, name } }); // the artist's album list omits the artist
+  try {
+    const out: Raw[] = [];
+    for (let index = 0; index < 400; index += 100) {
+      const r = await dz<Raw>(`/artist/${artistId}/albums?limit=100&index=${index}`, 6 * HOUR);
+      const page = list(r);
+      out.push(...page);
+      if (page.length < 100 || (typeof r.total === "number" && out.length >= r.total)) break;
+    }
+    if (out.length) return { albums: out.map((x) => mapAlbum(own(x))), error: null };
+  } catch (e) {
+    const fallback = await searchArtistAlbums(artistId, name).catch(() => []);
+    return { albums: fallback, error: fallback.length ? null : (e as Error).message };
+  }
+  return { albums: await searchArtistAlbums(artistId, name).catch(() => []), error: null };
+}
+async function searchArtistAlbums(artistId: string, name: string): Promise<CatAlbum[]> {
+  if (!name) return [];
+  const r = await dz<Raw>(`/search/album?q=${enc(`artist:"${name}"`)}&limit=100`, 6 * HOUR);
+  return list(r).filter((x) => String(x.artist?.id ?? "") === artistId).map(mapAlbum);
+}
+
 export async function artistProfile(artistId: string): Promise<ArtistProfile> {
   if (!/^\d{1,12}$/.test(artistId)) throw new OnlineError("Bad artist id");
   const a = await dz<Raw>(`/artist/${artistId}`, 6 * HOUR);
-  const [top, albums, related, bio] = await Promise.all([
+  const name = String(a.name ?? "");
+  const [top, disco, related, bio] = await Promise.all([
     dz<Raw>(`/artist/${artistId}/top?limit=100`, 6 * HOUR).then((r) => dedupeSongs(list(r).filter(playable).map((t) => mapTrack(t)))).catch(() => [] as CatTrack[]),
-    dz<Raw>(`/artist/${artistId}/albums?limit=100`, 6 * HOUR).then((r) => list(r).map(mapAlbum)).catch(() => [] as CatAlbum[]),
+    artistAlbums(artistId, name),
     dz<Raw>(`/artist/${artistId}/related?limit=12`, 12 * HOUR).then((r) => list(r).map(mapArtist)).catch(() => [] as CatArtist[]),
-    artistBio(String(a.name ?? "")).catch(() => null),
+    artistBio(name).catch(() => null),
   ]);
-  // Newest first, one entry per title (Deezer lists regional / deluxe duplicates).
+  // Newest first, one entry per title + kind (Deezer lists regional / deluxe duplicates; a single may share the album's name).
   const seen = new Set<string>();
-  const uniq = albums.filter((x) => { const k = normalize(x.title); if (seen.has(k)) return false; seen.add(k); return true; }).sort((x, y) => (y.year ?? 0) - (x.year ?? 0));
-  return { artist: { ...mapArtist(a), albums: typeof a.nb_album === "number" ? a.nb_album : null }, bio, topTracks: top, albums: uniq, related };
+  const uniq = disco.albums.filter((x) => { const k = `${normalize(x.title) || x.title.toLowerCase()}|${x.kind === "album" || x.kind === null ? "a" : x.kind}`; if (seen.has(k)) return false; seen.add(k); return true; }).sort((x, y) => (y.year ?? 0) - (x.year ?? 0));
+  return { artist: { ...mapArtist(a), albums: typeof a.nb_album === "number" ? a.nb_album : null }, bio, topTracks: top, albums: uniq, albumsError: disco.error, related };
 }
 
 export async function albumDetail(albumId: string): Promise<{ album: CatAlbum & { label: string | null; genres: string[]; durationSec: number }; tracks: CatTrack[] }> {
