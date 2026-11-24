@@ -136,6 +136,10 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const flash = useCallback((msg: string) => { setError(msg); setTimeout(() => setError((e) => (e === msg ? "" : e)), 7000); }, []);
 
   const lastSource = useRef<{ key: string; id: string } | null>(null);
+  /** The next song, prepared ~30 s before this one ends, so `ended` can switch to it without waiting for the network. */
+  const nextUp = useRef<{ afterId: string; play: PlayInfo } | null>(null);
+  const peeking = useRef<string | null>(null);
+  const peekAgainAt = useRef(0); // after a failed attempt: not before this time
   const startRef = useRef<(b: { itemId?: string; dir?: "next" | "prev"; auto?: boolean; forceTranscode?: boolean }, at?: number) => Promise<void>>(async () => {});
 
   /** The song after `id` according to the queue this tab holds (same rules as the server), or null at the end. */
@@ -208,12 +212,59 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     void (nid ? start({ itemId: nid }) : start({ dir: "next", auto }));
   }, [after, start]);
 
+  /** Prepare the song after the current one (once per song), without moving the queue. */
+  const peek = useCallback(() => {
+    const p = playRef.current;
+    const q = queueRef.current;
+    if (!p || !q || peeking.current === p.item.id || nextUp.current?.afterId === p.item.id || Date.now() < peekAgainAt.current) return;
+    const nid = after(p.item.id, true);
+    if (nid === p.item.id || (!nid && !q.state.autoplay)) return; // repeat-one / end of the queue: nothing to fetch
+    peeking.current = p.item.id;
+    api<{ play: PlayInfo | null; queue: Queue }>("/api/music/play", { method: "POST", body: { ...(nid ? { itemId: nid } : {}), peek: true, caps: caps() } })
+      .then((r) => {
+        if (playRef.current?.item.id !== p.item.id || !r.play) return;
+        if (!nid) { queueRef.current = r.queue; setQueue(r.queue); } // autoplay appended songs at the end
+        nextUp.current = { afterId: p.item.id, play: r.play };
+      })
+      .catch(() => { peekAgainAt.current = Date.now() + 5000; }) // `ended` falls back to the normal (waiting) way
+      .finally(() => { if (peeking.current === p.item.id) peeking.current = null; });
+  }, [after, caps]);
+
+  /**
+   * Switch to the prepared next song synchronously, inside the `ended` event. A backgrounded phone keeps a page alive only
+   * while it plays audio: waiting for the server between two songs let Android freeze the app, so the next song never started.
+   * The server is told afterwards (it makes the song current and preloads the one after).
+   */
+  const handoff = useCallback((n: PlayInfo) => {
+    const q = queueRef.current;
+    if (q) { const nq = { ...q, state: { ...q.state, currentItemId: n.item.id, positionSec: 0 } }; queueRef.current = nq; setQueue(nq); }
+    reported.current = null;
+    retried.current = null;
+    playRef.current = n;
+    setPlay(n);
+    setCapture(n.status ?? null);
+    setError((e) => (e.startsWith("Skipped ") ? e : ""));
+    attach(n, 0);
+    api<{ play: PlayInfo | null; queue: Queue }>("/api/music/play", { method: "POST", body: { itemId: n.item.id, caps: caps() } })
+      .then((r) => {
+        if (playRef.current?.item.id !== n.item.id) return;
+        setQueue(r.queue);
+        if (!r.play) return;
+        setPlay(r.play);
+        if (r.play.url !== n.url) { setCapture(r.play.status ?? null); attach(r.play, offset.current + (audio.current?.currentTime ?? 0)); } // other audio after all
+      })
+      .catch(() => {}); // the audio already plays; the next status poll / error handler covers a dropped entry
+  }, [attach, caps]);
+
   // ----- audio element events -----
   const onTime = () => {
     const a = audio.current;
     if (!a) return;
-    setPosition(offset.current + a.currentTime);
+    const t = offset.current + a.currentTime;
+    setPosition(t);
     if (a.duration && Number.isFinite(a.duration) && playRef.current?.kind === "local" && !playRef.current.transcode) setDuration(a.duration);
+    const total = (a.duration && Number.isFinite(a.duration) ? a.duration : 0) || playRef.current?.durationSec || 0;
+    if (!a.paused && t > 3 && (total ? total - t <= 30 : t >= 20)) peek();
   };
   const onLoadedMeta = () => {
     const a = audio.current;
@@ -222,6 +273,12 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const onEnded = () => {
     report(true);
     skips.current = 0;
+    const p = playRef.current;
+    const nid = p ? after(p.item.id, true) : null;
+    if (p && nid === p.item.id) { reported.current = null; attach(p, 0); return; } // repeat one: same audio from the start
+    const pre = nextUp.current;
+    nextUp.current = null;
+    if (p && pre && pre.afterId === p.item.id && pre.play.item.id === nid) { handoff(pre.play); return; }
     goNext(true);
   };
   const onError = () => {

@@ -162,6 +162,18 @@ export async function advance(profileId: string, dir: "next" | "prev", auto: boo
   return { itemId: id, queue: await loadQueue(profileId), ended: !id };
 }
 
+/** What `advance(next, auto)` would pick, without moving the queue (extends it with autoplay picks at the end, like advance). */
+export async function peekNext(profileId: string, mode: MusicMode): Promise<string | null> {
+  let q = await loadQueue(profileId);
+  const pos = () => q.items.map((i, position) => ({ id: i.id, position }));
+  let id = nextId(pos(), q.state, { auto: true });
+  if (!id && q.state.autoplay) {
+    const added = await extendWithAutoplay(profileId, mode);
+    if (added) { q = await loadQueue(profileId); id = nextId(pos(), q.state); }
+  }
+  return id;
+}
+
 /** Appends tracks the profile is likely to enjoy: local recommendations first, then not-recently-played on-demand favourites. */
 export async function extendWithAutoplay(profileId: string, mode: MusicMode, n = 8): Promise<number> {
   const existing = await rows(profileId);

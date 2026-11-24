@@ -34,7 +34,8 @@ export function needsTranscode(codec: string | null, caps: Caps = {}, force = fa
 
 type Ctx = { profileId: string; user: { role: "ADMIN" | "USER" } };
 
-export async function playItem(ctx: Ctx, itemId: string, caps: Caps = {}, forceTranscode = false): Promise<PlayInfo> {
+/** `peek`: prepare only (on-demand audio is held as a preload), don't make it the current item. */
+export async function playItem(ctx: Ctx, itemId: string, caps: Caps = {}, forceTranscode = false, o: { peek?: boolean } = {}): Promise<PlayInfo> {
   const row = await db.musicQueueItem.findFirst({ where: { id: itemId, profileId: ctx.profileId } });
   if (!row) throw new HttpError(404, "Queue item not found");
   const s = await getSettings();
@@ -55,7 +56,7 @@ export async function playItem(ctx: Ctx, itemId: string, caps: Caps = {}, forceT
     const t = await db.musicTrack.findUnique({ where: { id: trackId } });
     if (t && t.status === "ready") {
       const transcode = needsTranscode(t.codec, caps, forceTranscode);
-      await db.musicQueueState.update({ where: { profileId: ctx.profileId }, data: { currentItemId: itemId } });
+      if (!o.peek) await db.musicQueueState.update({ where: { profileId: ctx.profileId }, data: { currentItemId: itemId } });
       return { item: dto, kind: "local", url: `/api/music/tracks/${t.id}/audio${transcode ? "?transcode=1" : ""}`, transcode, durationSec: t.durationSec };
     }
     if (!mode.onDemand) throw new HttpError(409, "This file is missing from the library.");
@@ -64,9 +65,10 @@ export async function playItem(ctx: Ctx, itemId: string, caps: Caps = {}, forceT
 
   const cfg = toWorkerConfig(s);
   const status = await musicWorker.prepare({
-    cfg, holder: ctx.profileId, role: "current",
+    cfg, holder: ctx.profileId, role: o.peek ? "preload" : "current",
     ...(dto.candidate ? { candidate: dto.candidate } : { query: { title: row.title, artist: row.artist, album: row.album ?? undefined, durationSec: row.durationSec ?? undefined } }),
   });
+  if (o.peek) return { item: dto, kind: "ondemand", url: `/api/music/od/${status.key}/audio`, transcode: false, durationSec: status.durationSec ?? row.durationSec, key: status.key, status };
   await db.musicQueueState.update({ where: { profileId: ctx.profileId }, data: { currentItemId: itemId } });
   void syncPreloads(ctx).catch(() => {});
   return { item: dto, kind: "ondemand", url: `/api/music/od/${status.key}/audio`, transcode: false, durationSec: status.durationSec ?? row.durationSec, key: status.key, status };

@@ -27,7 +27,8 @@ check("Tone One plays", !!(await playingTrack("Tone One")));
 
 // 1) the server can't be reached when the song ends: no "Failed to fetch", no skipping, it retries and lands on the NEXT song
 let blocked = 0;
-await page.route("**/api/music/play", (route) => { if (blocked < 3) { blocked++; return route.abort("connectionrefused"); } return route.continue(); });
+// (the "prepare the next song" request fails too, so this is the path without a prepared song)
+await page.route("**/api/music/play", (route) => { if (route.request().postDataJSON()?.peek) return route.abort("connectionrefused"); if (blocked < 3) { blocked++; return route.abort("connectionrefused"); } return route.continue(); });
 await toEnd();
 const msg = await until(async () => { const t = await bar().innerText(); return /Can't reach the server/i.test(t) ? t : null; }, 10000, 200);
 check("offline at track end: says it can't reach the server and keeps trying", !!msg);
@@ -43,5 +44,28 @@ check("unplayable song is reported as skipped", !!skipped || undefined);
 check("and the queue carries on with the song after it (Legacy Song)", !!(await playingTrack("Legacy Song", 30000)));
 const q = await (await api.get("/api/music/queue")).json();
 check("server queue points at Legacy Song", q.items.find((i) => i.id === q.state.currentItemId)?.title === "Legacy Song");
+
+// 3) a phone in the background: the next song must start the moment this one ends, without a server round trip in
+//    between (Android freezes a hidden page as soon as nothing plays). It is prepared ahead ("peek") and switched to inside
+//    the `ended` event; the server is told afterwards.
+r = await api.put("/api/music/queue", { data: { items: [item(by["Tone One"]), item(by["Tone Two"])], startIndex: 0 } });
+check("two-song queue saved", r.ok());
+await page.reload();
+await bar().waitFor();
+await page.getByRole("button", { name: "Play", exact: true }).first().click();
+check("Tone One plays again", !!(await playingTrack("Tone One")));
+let peeks = 0;
+await page.route("**/api/music/play", (route) => { if (route.request().postDataJSON()?.peek) peeks++; return route.continue(); });
+await until(async () => ((await audio())?.t > 4.5 && peeks ? true : null), 20000, 200);
+await page.waitForTimeout(800); // let the prepared answer arrive
+await page.unroute("**/api/music/play");
+check("the next song was prepared before the end", peeks > 0, `peeks=${peeks}`);
+let held = 0;
+await page.route("**/api/music/play", async (route) => { held++; await new Promise((res) => setTimeout(res, 12000)); return route.continue().catch(() => {}); });
+await toEnd();
+check("the next song starts at once although the server answers slowly (no network wait between songs)", !!(await playingTrack("Tone Two", 5000)), `held=${held}`);
+await page.unroute("**/api/music/play");
+const q2 = await until(async () => { const v = await (await api.get("/api/music/queue")).json(); return v.items.find((i) => i.id === v.state.currentItemId)?.title === "Tone Two" ? v : null; }, 20000, 500);
+check("and the server is told afterwards (current = Tone Two)", !!q2);
 await browser.close();
 summary();
