@@ -114,7 +114,7 @@ export function SetupWizard({ defaults }: { defaults: { mediaDir: string; downlo
                   {defaults.hasEnvTmdb && " A key is already provided through the TMDB_API_KEY environment variable."}
                 </p>
               </div>
-              <Input label="TMDB API key / read access token" value={f.tmdbApiKey} onChange={(e) => { set("tmdbApiKey", e.target.value); setTmdbState("idle"); }} placeholder={defaults.hasEnvTmdb ? "Using environment variable" : "Optional — can be added later in Settings"} />
+              <Input label="TMDB API key / read access token" value={f.tmdbApiKey} onChange={(e) => { set("tmdbApiKey", e.target.value); setTmdbState("idle"); }} placeholder={defaults.hasEnvTmdb ? "Using environment variable" : "Optional. You can add it later in Settings."} />
               {tmdbState === "ok" && <p className="text-sm text-emerald-300">✓ Key verified</p>}
               <p className="text-xs text-muted">Without a key Rift still plays your local files, but discovery rows and metadata matching stay empty.</p>
             </>

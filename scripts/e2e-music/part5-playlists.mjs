@@ -60,9 +60,10 @@ check("playlist page shows unavailable entries clearly", (await page.getByText(/
 await page.screenshot({ path: process.env.E + "/shot-playlist.png" });
 await page.goto(BASE + "/music/playlists");
 await page.getByRole("button", { name: "Import from Spotify" }).click();
-await page.getByLabel("Spotify link").fill("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M");
+await page.getByLabel("Spotify links").fill("Listen on Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M");
+await page.getByRole("button", { name: "Continue", exact: true }).click();
 await page.getByRole("button", { name: "Import", exact: true }).click();
-check("Spotify import dialog shows the error inline", await page.getByRole("alert").filter({ hasText: /Spotify/ }).waitFor({ timeout: 20000 }).then(() => true, () => false));
+check("Spotify import dialog shows the failure inline", await page.getByText(/Failed/).first().waitFor({ timeout: 30000 }).then(() => true, () => false));
 await page.goto(BASE + "/music/search?q=Alpha%20Track");
 await page.getByText("On-demand").first().waitFor();
 check("search page shows library + on-demand sections", await until(async () => (await page.getByRole("button", { name: /Play Alpha Track/ }).count()) > 0, 30000, 500));

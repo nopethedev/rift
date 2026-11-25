@@ -3,6 +3,7 @@ import { spawn, execFile } from "node:child_process";
 import type { Candidate, MusicConfig, TrackQuery } from "../../../shared/music-protocol";
 import { MATCH_THRESHOLD, isOpenLicense, scoreCandidate } from "../../../shared/music-match";
 import { EngineError, type AudioSource, type Engine } from "./types";
+import { lookups } from "../lookup-cache";
 
 const PREFIX = { youtube: "ytsearch", soundcloud: "scsearch" } as const;
 const SEARCH_RESULTS = 8;
@@ -24,7 +25,12 @@ export async function ytdlpVersion(cfg?: MusicConfig): Promise<string | null> {
   try { return (await run(ytdlpBinary(cfg), ["--version"], 8000)).trim(); } catch { return null; }
 }
 
-async function flatSearch(provider: "youtube" | "soundcloud", terms: string, cfg: MusicConfig, n: number): Promise<Candidate[]> {
+/** One yt-dlp search, cached for 12 hours (an hour when it found nothing) so repeats don't hit YouTube/SoundCloud again. */
+function flatSearch(provider: "youtube" | "soundcloud", terms: string, cfg: MusicConfig, n: number): Promise<Candidate[]> {
+  return lookups.wrap(`ytdlp|${provider}|${n}|${terms.trim().toLowerCase()}`, 12 * 3600_000, () => flatSearchLive(provider, terms, cfg, n), { ttlFor: (v) => (v.length ? 12 * 3600_000 : 3600_000) });
+}
+
+async function flatSearchLive(provider: "youtube" | "soundcloud", terms: string, cfg: MusicConfig, n: number): Promise<Candidate[]> {
   const out = await run(ytdlpBinary(cfg), ["--flat-playlist", "--dump-single-json", "--no-warnings", "--skip-download", `${PREFIX[provider]}${n}:${terms}`]);
   const entries = ((JSON.parse(out) as { entries?: FlatEntry[] }).entries ?? []).filter((e) => e && (e.url || e.webpage_url));
   return entries.map((e) => ({

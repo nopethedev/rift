@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
+import { SEARCH_DELAY_MS } from "@/lib/use-debounced";
 import { Play, Shuffle } from "lucide-react";
 import { api, Button, Input, Skeleton } from "@/components/ui";
 import { AlbumCard, ArtistCard, Empty, Grid, TrackRow, trackRow } from "@/components/music/parts";
@@ -32,7 +33,7 @@ export function LibraryView() {
     } finally { setLoading(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, q, tracks.length]);
-  useEffect(() => { const t = setTimeout(() => void load(true), q ? 250 : 0); return () => clearTimeout(t); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tab, q]);
+  useEffect(() => { const t = setTimeout(() => void load(true), q ? SEARCH_DELAY_MS : 0); return () => clearTimeout(t); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tab, q]);
 
   const inputs = tracks.map((t) => ({ trackId: t.id }));
   return (

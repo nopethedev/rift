@@ -12,6 +12,9 @@ import { musicWorker } from "./worker";
 import { seal, unseal } from "./seal";
 import { matchPatch } from "./saved";
 import { fillPlaylistArtwork, playlistArtStatus } from "./artwork";
+import { recommend, type Rec } from "./taste";
+import { songKey } from "@/lib/music-taste";
+import type { MusicMode } from "./config";
 
 export type Availability = "local" | "ondemand" | "unavailable";
 export interface PlaylistItemDTO {
@@ -117,6 +120,22 @@ export async function playlistInputs(profileId: string, id: string): Promise<{ i
     ids: items.map((i) => i.id),
     inputs: items.map((i) => (i.trackId ? { trackId: i.trackId } : { title: i.title, artist: i.artist, album: i.album, durationSec: i.durationSec, artworkUrl: i.artworkUrl, candidate: i.candidate ? JSON.parse(i.candidate) : null })),
   };
+}
+
+/**
+ * Songs to add to a playlist: like the ones already in it (its artists, artists related to them), ranked with the
+ * profile's taste in a supporting role. An empty playlist gets the profile's own recommendations.
+ */
+export async function playlistRecommendations(profileId: string, id: string, mode: MusicMode, shown: string[], n = 10): Promise<Rec[]> {
+  await owned(profileId, id);
+  if (!mode.local && !mode.onDemand) return [];
+  const items = await db.musicPlaylistItem.findMany({ where: { playlistId: id }, select: { artist: true, title: true }, orderBy: { position: "asc" } });
+  const skip = new Set(shown);
+  const recs = await recommend(profileId, {
+    n: n + skip.size, context: items.length ? items : undefined, contextWeight: 1.2, tasteWeight: items.length ? 0.4 : 1,
+    exclude: new Set(items.map((i) => songKey(i.artist, i.title))), library: mode.local, catalog: mode.onDemand,
+  });
+  return recs.filter((r) => !skip.has(r.key)).slice(0, n);
 }
 
 // ---------- Spotify import / sync ----------

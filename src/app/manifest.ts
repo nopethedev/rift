@@ -18,6 +18,8 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
+    // Android: Spotify → Share → Rift opens the importer with the link.
+    share_target: { action: "/music/import", method: "GET", params: { title: "title", text: "text", url: "url" } },
     shortcuts: [
       { name: "Stream", short_name: "Stream", url: "/", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
       { name: "Music", short_name: "Music", url: "/music", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },

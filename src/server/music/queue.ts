@@ -8,7 +8,8 @@ import type { Candidate } from "@shared/music-protocol";
 import { makeShuffleOrder, moveItem, nextId, playOrder, prevId, restoreOrder, type RepeatMode } from "@/lib/music-queue";
 import { coverUrl } from "./catalog";
 import { musicMode, type MusicMode } from "./config";
-import { recommendLocal } from "./recommend";
+import { recommend } from "./taste";
+import { songKey } from "@/lib/music-taste";
 import { unseal } from "./seal";
 
 export interface QueueItemDTO {
@@ -155,8 +156,14 @@ export async function advance(profileId: string, dir: "next" | "prev", auto: boo
   const pos = () => q.items.map((i, position) => ({ id: i.id, position }));
   let id = dir === "next" ? nextId(pos(), q.state, { auto }) : prevId(pos(), q.state);
   if (!id && dir === "next" && q.state.autoplay) {
+    const before = q.state.currentItemId;
     const added = await extendWithAutoplay(profileId, mode);
-    if (added) { q = await loadQueue(profileId); id = nextId(pos(), q.state); }
+    if (added) {
+      q = await loadQueue(profileId);
+      // Finding autoplay songs can take a few seconds: if the queue was replaced meanwhile, leave the new one alone.
+      if (q.state.currentItemId !== before) return { itemId: q.state.currentItemId, queue: q, ended: false };
+      id = nextId(pos(), q.state);
+    }
   }
   if (id) await db.musicQueueState.update({ where: { profileId }, data: { currentItemId: id, positionSec: 0 } });
   return { itemId: id, queue: await loadQueue(profileId), ended: !id };
@@ -168,31 +175,47 @@ export async function peekNext(profileId: string, mode: MusicMode): Promise<stri
   const pos = () => q.items.map((i, position) => ({ id: i.id, position }));
   let id = nextId(pos(), q.state, { auto: true });
   if (!id && q.state.autoplay) {
+    const before = q.state.currentItemId;
     const added = await extendWithAutoplay(profileId, mode);
-    if (added) { q = await loadQueue(profileId); id = nextId(pos(), q.state); }
+    if (added) {
+      q = await loadQueue(profileId);
+      if (q.state.currentItemId !== before) return null; // the queue changed meanwhile: nothing to prepare
+      id = nextId(pos(), q.state);
+    }
   }
   return id;
 }
 
-/** Appends tracks the profile is likely to enjoy: local recommendations first, then not-recently-played on-demand favourites. */
+/**
+ * Appends songs the profile is likely to enjoy that fit what was just playing: ranked by the taste profile with the
+ * last songs of the queue as context (library songs, and catalogue songs when on-demand works). When nothing is
+ * found, not-recently-played on-demand favourites are used.
+ */
 export async function extendWithAutoplay(profileId: string, mode: MusicMode, n = 8): Promise<number> {
   const existing = await rows(profileId);
-  const inQueue = new Set(existing.flatMap((e) => (e.trackId ? [e.trackId] : [])));
-  let picks: ItemInput[] = mode.local ? (await recommendLocal(profileId, n, inQueue)).map((t) => ({ trackId: t.id })) : [];
+  const exclude = new Set(existing.map((e) => songKey(e.artist, e.title)));
+  let picks: ItemInput[] = [];
+  if (mode.local || mode.onDemand) {
+    // The catalogue part gets 2.5 s (a cold Deezer lookup takes longer; it carries on and is cached for next time).
+    const recs = await recommend(profileId, { n, context: existing.slice(-6), contextWeight: 0.8, tasteWeight: 1, exclude, library: mode.local, catalog: mode.onDemand, catalogTimeoutMs: 2500 }).catch((e: Error) => { console.warn("[music] autoplay picks failed:", e.message); return []; });
+    picks = recs.map((r) => r.input as ItemInput);
+  }
   if (picks.length < n && mode.onDemand) {
     const recent = await db.musicPlay.findMany({ where: { profileId, source: "ondemand", completed: true }, orderBy: { playedAt: "desc" }, take: 200 });
-    const queued = new Set(existing.map((e) => `${e.title}|${e.artist}`.toLowerCase()));
-    const seen = new Set<string>();
+    const queued = new Set([...exclude, ...picks.map((p) => ("trackId" in p ? "" : songKey(p.artist, p.title)))]);
     const later = recent.slice(10); // skip the very latest: do not replay what just played
     for (const p of later) {
-      const k = `${p.title}|${p.artist}`.toLowerCase();
-      if (queued.has(k) || seen.has(k)) continue;
-      seen.add(k);
+      const k = songKey(p.artist, p.title);
+      if (queued.has(k)) continue;
+      queued.add(k);
       picks.push({ title: p.title, artist: p.artist, album: p.album, durationSec: p.durationSec });
       if (picks.length >= n) break;
     }
   }
   if (!picks.length) return 0;
+  // Don't append to a queue that was replaced or cleared while the picks were being found.
+  const now = await rows(profileId);
+  if (now.length !== existing.length || now.some((r, i) => r.id !== existing[i].id)) return 0;
   await addItems(profileId, picks, "end", "autoplay");
   return picks.length;
 }

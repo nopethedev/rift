@@ -2,42 +2,15 @@ import "server-only";
 import { db } from "../db";
 import { coverUrl, toTrackDTO, type TrackDTO } from "./catalog";
 import { shuffleInPlace } from "./util";
+import { recommend } from "./taste";
 
-const DAY = 86400_000;
 
-interface Taste { artists: Map<string, number>; genres: Map<string, number>; recent: Set<string>; plays: number }
-
-/** Affinity from the profile's play history: finished plays count fully, skips barely. Newer plays weigh more. */
-export async function tasteOf(profileId: string): Promise<Taste> {
-  const plays = await db.musicPlay.findMany({ where: { profileId, playedAt: { gt: new Date(Date.now() - 120 * DAY) } }, orderBy: { playedAt: "desc" }, take: 800 });
-  const artists = new Map<string, number>(), genres = new Map<string, number>(), recent = new Set<string>();
-  plays.forEach((p, i) => {
-    const w = (p.completed ? 1 : p.playedSec >= 30 ? 0.5 : 0.1) * (1 - Math.min(0.7, (Date.now() - p.playedAt.getTime()) / (120 * DAY)));
-    artists.set(p.artist, (artists.get(p.artist) ?? 0) + w);
-    if (p.genre) genres.set(p.genre, (genres.get(p.genre) ?? 0) + w);
-    if (p.trackId && i < 40) recent.add(p.trackId);
-  });
-  return { artists, genres, recent, plays: plays.length };
-}
-
-/** Ranked local tracks for a profile (affinity + a little randomness, at most 3 per artist). */
+/** Ranked library tracks for a profile, from the taste profile (src/lib/music-taste.ts): at most 3 per artist. */
 export async function recommendLocal(profileId: string, n: number, exclude: Set<string> = new Set()): Promise<TrackDTO[]> {
-  const taste = await tasteOf(profileId);
-  const pool = await db.musicTrack.findMany({ where: { status: "ready" }, take: 4000, orderBy: { createdAt: "desc" } });
-  const scored = pool.filter((t) => !exclude.has(t.id) && !taste.recent.has(t.id)).map((t) => ({
-    t, s: 2 * Math.log1p(taste.artists.get(t.artist) ?? 0) + Math.log1p(taste.genres.get(t.genre ?? "") ?? 0) + Math.random() * (taste.plays ? 0.8 : 3),
-  }));
-  scored.sort((a, b) => b.s - a.s);
-  const perArtist = new Map<string, number>();
-  const out: TrackDTO[] = [];
-  for (const { t } of scored) {
-    const c = perArtist.get(t.artist) ?? 0;
-    if (c >= 3) continue;
-    perArtist.set(t.artist, c + 1);
-    out.push(toTrackDTO(t));
-    if (out.length >= n) break;
-  }
-  return out;
+  const recs = await recommend(profileId, { n: n + exclude.size, library: true, catalog: false, perArtist: 3 });
+  const ids = recs.flatMap((r) => (r.trackId && !exclude.has(r.trackId) ? [r.trackId] : [])).slice(0, n);
+  const byId = new Map((await db.musicTrack.findMany({ where: { id: { in: ids } } })).map((t) => [t.id, t]));
+  return ids.flatMap((id) => (byId.has(id) ? [toTrackDTO(byId.get(id)!)] : []));
 }
 
 /** "Radio": tracks like the seed (same artist, same genre and era), shuffled. Seed is a local track id. */

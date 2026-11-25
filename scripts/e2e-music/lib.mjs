@@ -17,6 +17,7 @@ export async function login(ctx) {
   if (!setup.ok()) { const l = await ctx.post(BASE + "/api/auth/login", { data: { username: "admin", password: "Sup3r-secret-pass!" } }); if (!l.ok()) throw new Error("login failed " + (await l.text())); }
   const profs = await (await ctx.get(BASE + "/api/profiles")).json();
   const sel = await ctx.post(BASE + "/api/profiles/" + profs.profiles[0].id, { data: {} });
+  await ctx.put(BASE + "/api/music/taste", { data: { onboarded: true } }); // skip the music setup (part13 tests it)
   if (!sel.ok()) throw new Error("select profile failed " + (await sel.text()));
   return profs.profiles[0].id;
 }

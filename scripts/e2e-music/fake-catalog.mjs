@@ -55,6 +55,8 @@ function tmdb(u) {
 function route(u) {
   const p = u.pathname;
   if (p === "/chart/0" || /^\/chart\/\d+$/.test(p)) return chart();
+  if (/^\/chart\/\d+\/artists$/.test(p)) return D(Object.values(A));
+  if (/^\/artist\/[1-3]\/radio$/.test(p)) return D(T);
   if (p === "/editorial/0/releases") return D([ALB[14], ALB[13]]);
   if (p === "/genre") return genres;
   // an artist with many songs (not part of A / charts, so other checks keep their counts)

@@ -8,6 +8,7 @@ import { Cover, Empty } from "@/components/music/parts";
 import { CatAlbumCard, CatArtistCard, CatTrackCard, LocalTrackCard, ShelfRow } from "@/components/music/cards";
 import { useMusic } from "@/components/music/player-provider";
 import { useSaved } from "@/components/music/saved-provider";
+import { BackgroundPlaybackTip } from "@/components/music/background-playback";
 import type { Feed, MusicMode, TrackDTO } from "@/lib/music-types";
 
 interface Home { mode: MusicMode; stats: { tracks: number; albums: number; artists: number }; madeForYou: TrackDTO[]; recentlyPlayed: TrackDTO[]; recentlyAdded: TrackDTO[] }
@@ -46,6 +47,7 @@ export function MusicHome({ name, isAdmin }: { name: string; isAdmin: boolean })
   const albums = data.recentlyPlayed.filter((t) => t.album && !seen.has(t.albumKey) && seen.add(t.albumKey));
   return (
     <div>
+      <BackgroundPlaybackTip />
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-3xl font-bold">{greeting()}, {name}</h1>
         {isAdmin && <Link href="/admin/music"><Button variant="secondary" size="sm"><Upload className="size-4" /> Manage library</Button></Link>}

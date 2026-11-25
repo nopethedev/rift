@@ -7,25 +7,21 @@ import { api, Button, Input, Skeleton } from "@/components/ui";
 import { Modal, ErrorNote } from "@/app/admin/parts";
 import { usePoll } from "@/lib/use-poll";
 import { Cover, Empty } from "@/components/music/parts";
+import { SpotifyImporter } from "@/components/music/spotify-import";
 
 interface PL { id: string; name: string; source: string; count: number; unavailable: number; artworkUrl: string | null }
 
 export function PlaylistsView() {
   const router = useRouter();
-  const { data, loading } = usePoll<{ playlists: PL[] }>("/api/music/playlists");
+  const { data, loading, reload } = usePoll<{ playlists: PL[] }>("/api/music/playlists");
   const [open, setOpen] = useState<"new" | "spotify" | null>(null);
   const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
   async function create() {
     setBusy(true); setErr("");
     try { const r = await api<{ id: string }>("/api/music/playlists", { method: "POST", body: { name } }); router.push(`/music/playlists/${r.id}`); } catch (e) { setErr((e as Error).message); setBusy(false); }
-  }
-  async function importSpotify() {
-    setBusy(true); setErr("");
-    try { const r = await api<{ id: string }>("/api/music/playlists/import", { method: "POST", body: { url } }); router.push(`/music/playlists/${r.id}`); } catch (e) { setErr((e as Error).message); setBusy(false); }
   }
   return (
     <div>
@@ -42,13 +38,9 @@ export function PlaylistsView() {
         </div>
       ) : <Empty icon={ListMusic} title="No playlists yet">Create one, add songs from any track menu, or paste a Spotify playlist link to import it.</Empty>}
       <Modal open={open === "new"} onClose={() => setOpen(null)} title="New playlist"><div className="space-y-3"><Input aria-label="Playlist name" autoFocus placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && create()} /><ErrorNote msg={err} /><Button onClick={create} loading={busy} disabled={!name.trim()}>Create</Button></div></Modal>
-      <Modal open={open === "spotify"} onClose={() => !busy && setOpen(null)} title="Import from Spotify">
-        <div className="space-y-3">
-          <p className="text-sm text-muted">Paste a public Spotify playlist or album link. Rift imports the track list (names, artists, artwork, order) and plays each song from your library or an authorised on-demand source. No audio is taken from Spotify.</p>
-          <Input aria-label="Spotify link" autoFocus placeholder="https://open.spotify.com/playlist/…" value={url} onChange={(e) => setUrl(e.target.value)} />
-          <ErrorNote msg={err} />
-          <Button onClick={importSpotify} loading={busy} disabled={url.trim().length < 10}>Import</Button>
-        </div>
+      <Modal open={open === "spotify"} onClose={() => setOpen(null)} title="Import from Spotify">
+        <p className="mb-3 text-sm text-muted">Paste playlist or album links (or a profile link). Rift copies the song list and plays each song from your library or an on-demand source.</p>
+        <SpotifyImporter onImported={() => reload()} />
       </Modal>
     </div>
   );

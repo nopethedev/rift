@@ -13,13 +13,14 @@ import path from "node:path";
 import { AUDIO_MIME, type AudioFormat, type Candidate, type EntryState, type EntryStatus, type HoldRole, type MusicConfig, type PrepareRequest, type ReleaseRequest, type TrackQuery } from "../../shared/music-protocol";
 import { normalize } from "../../shared/music-match";
 import { EngineError, engineChain, type Engine } from "./engines/types";
+import { lookups } from "./lookup-cache";
 
 export class BusyError extends Error {}
 
 const EXT: Record<AudioFormat, string> = { mp3: "mp3", aac: "aac", opus: "ogg" };
 const FIRST_BYTE_TIMEOUT_MS = 45_000;
 const STALL_TIMEOUT_MS = 60_000;
-const RESOLVE_TTL_MS = 30 * 60_000;
+const RESOLVE_TTL_MS = 3 * 86400_000;
 const FAILED_RETRY_MS = 4_000;
 
 const sha = (s: string) => createHash("sha1").update(s).digest("hex");
@@ -105,8 +106,6 @@ export class MusicCache {
   private jobs = new Map<string, Job>();
   private queue: Job[] = [];
   private running = new Set<Job>();
-  private resolveCache = new Map<string, { at: number; cands: Candidate[] }>();
-  private resolveInflight = new Map<string, Promise<Candidate[]>>();
   private timer?: NodeJS.Timeout;
   private initDir?: string;
 
@@ -126,6 +125,7 @@ export class MusicCache {
     if (!this.initDir) for (const f of await fs.readdir(dir).catch(() => [] as string[])) if (/^[0-9a-f]{40}\.(part|mp3|aac|ogg)$/.test(f)) await fs.rm(path.join(dir, f), { force: true });
     this.dir = dir;
     this.initDir = dir;
+    lookups.attach(path.join(base, "rift-lookups.json"));
   }
 
   // ---------- keys ----------
@@ -234,6 +234,7 @@ export class MusicCache {
 
   async shutdown() {
     if (this.timer) clearInterval(this.timer);
+    lookups.flush();
     for (const j of this.jobs.values()) j.kill();
     await Promise.all([...this.jobs.values()].map((j) => this.dropJob(j)));
   }
@@ -279,6 +280,7 @@ export class MusicCache {
             if (job.engineDown) break; // go straight to the next engine
           }
         }
+        this.forgetResolve(fallbackQuery, cfg, engine);
       }
       throw new EngineError(lastErr);
     } catch (e) {
@@ -298,16 +300,19 @@ export class MusicCache {
     throw last;
   }
 
+  /** Resolved recordings are kept for days (memory + the lookup file): resolving costs several source searches. */
+  private resolveKey(q: TrackQuery, cfg: MusicConfig, engine: Engine) {
+    const nodes = engine.id === "lavalink" ? cfg.lavalink.nodes.map((n) => `${n.id}:${n.searchPrefix}`).join(",") + "|" + cfg.lavalink.allowedSources.join(",") : cfg.ytdlp.providers.join(",");
+    return `resolve|${engine.id}|${sha(nodes).slice(0, 10)}|${MusicCache.queryKey(q, cfg)}`;
+  }
+
   private async resolveQuery(q: TrackQuery, cfg: MusicConfig, engine: Engine): Promise<Candidate[]> {
-    const rk = `${engine.id}|${MusicCache.queryKey(q, cfg)}`;
-    const hit = this.resolveCache.get(rk);
-    if (hit && Date.now() - hit.at < RESOLVE_TTL_MS) return hit.cands;
-    let p = this.resolveInflight.get(rk);
-    if (!p) {
-      p = engine.resolve(q, cfg).then((cands) => { this.resolveCache.set(rk, { at: Date.now(), cands }); return cands; }).finally(() => this.resolveInflight.delete(rk));
-      this.resolveInflight.set(rk, p);
-    }
-    return p;
+    return lookups.wrap(this.resolveKey(q, cfg, engine), RESOLVE_TTL_MS, () => engine.resolve(q, cfg));
+  }
+
+  /** None of the stored recordings could be played: look the song up again next time. */
+  private forgetResolve(q: TrackQuery | undefined, cfg: MusicConfig, engine: Engine | null) {
+    if (q && engine) lookups.delete(this.resolveKey(q, cfg, engine));
   }
 
   private jobFor(c: Candidate, cfg: MusicConfig): Job {
@@ -475,7 +480,6 @@ export class MusicCache {
     }
     // entries that lost their holders and have no job
     for (const e of [...this.entries.values()]) if (!e.job && !e.resolving && e.priority(now) === 0 && now - e.failedAt > 60_000) this.entries.delete(e.key);
-    for (const [k, v] of this.resolveCache) if (now - v.at > RESOLVE_TTL_MS) this.resolveCache.delete(k);
     this.schedule();
   }
 

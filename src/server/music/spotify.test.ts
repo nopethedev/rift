@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { mapApiTrack, mapEmbed, parseSpotifyUrl } from "./spotify";
+import { afterEach, describe, expect, it, vi } from "vitest";
+vi.mock("../settings", () => ({ getSettings: async () => ({ spotifyClientId: "", spotifyClientSecret: "" }) }));
+const { expandShortLink, findSpotifyLinks, mapApiTrack, mapEmbed, parseSpotifyRef, parseSpotifyUrl, previewSpotify } = await import("./spotify");
 
 describe("parseSpotifyUrl", () => {
   const id = "37i9dQZF1DXcBWIGoYBM5M";
@@ -47,5 +48,27 @@ describe("mapEmbed", () => {
   it("fails clearly for private/unreadable pages", () => {
     expect(() => mapEmbed("<html></html>", "playlist", "x")).toThrow(/Could not read/);
     expect(() => mapEmbed(page({ name: "No tracks" }), "playlist", "x")).toThrow(/private/);
+  });
+});
+
+describe("links", () => {
+  const id = "37i9dQZF1DXcBWIGoYBM5M";
+  afterEach(() => vi.unstubAllGlobals());
+  it("finds links in shared text and reads profile links", () => {
+    expect(findSpotifyLinks(`Listen to Chill on Spotify: https://open.spotify.com/playlist/${id}?si=x. Also https://spotify.link/AbC123 and spotify:album:${id}`))
+      .toEqual([`https://open.spotify.com/playlist/${id}?si=x`, "https://spotify.link/AbC123", `spotify:album:${id}`]);
+    expect(parseSpotifyRef("https://open.spotify.com/user/someone.42")).toEqual({ kind: "user", id: "someone.42" });
+    expect(parseSpotifyRef(`https://open.spotify.com/playlist/${id}`)).toEqual({ kind: "playlist", id });
+  });
+  it("expands spotify.link short links (redirect header or the page's script)", async () => {
+    vi.stubGlobal("fetch", async (u: string) => u.endsWith("/a") ? new Response(null, { status: 302, headers: { location: `https://open.spotify.com/playlist/${id}?si=1` } }) : new Response(`<script>window.location="https:\\/\\/open.spotify.com\\/album\\/${id}"</script>`, { status: 200 }));
+    expect(await expandShortLink("https://spotify.link/a")).toBe(`https://open.spotify.com/playlist/${id}?si=1`);
+    expect(await expandShortLink("https://spotify.link/b")).toBe(`https://open.spotify.com/album/${id}`);
+  });
+  it("preview explains song links and profiles without API keys", async () => {
+    const r = await previewSpotify(`https://open.spotify.com/track/${id} https://open.spotify.com/user/bob https://open.spotify.com/album/${id}`);
+    expect(r[0].error).toMatch(/song link/);
+    expect(r[1].error).toMatch(/client id/);
+    expect(r[2].entries).toEqual([{ url: `https://open.spotify.com/album/${id}`, kind: "album", id }]);
   });
 });

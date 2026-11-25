@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CloudDownload, Loader2, Search } from "lucide-react";
 import { api, Input } from "@/components/ui";
+import { SEARCH_DELAY_MS } from "@/lib/use-debounced";
 import { AlbumCard, ArtistCard, candidateRow, Empty, Grid, SectionTitle, TrackRow, trackRow, type RowItem } from "@/components/music/parts";
 import { CatAlbumCard, CatArtistCard, ShelfRow } from "@/components/music/cards";
 import { useMusic } from "@/components/music/player-provider";
@@ -19,28 +20,33 @@ export function SearchView() {
   const [od, setOd] = useState<{ loading: boolean; items: Candidate[]; error: string; sources?: SourceReport[] } | null>(null);
   const { playItems, current, play, mode } = useMusic();
 
+  // Typing in the box here waits 1 s after the last key (Enter: at once); a query from the top bar already waited.
+  const [now, setNow] = useState(0);
   useEffect(() => {
     const term = q.trim();
     if (term.length < 2) { setLib(null); setOd(null); setCat(null); return; }
-    let live = true;
+    const ctl = new AbortController();
+    const opt = { signal: ctl.signal };
     const t = setTimeout(async () => {
       if (term !== urlQ) router.replace(`/music/search?q=${encodeURIComponent(term)}`);
-      api<NonNullable<typeof cat>>(`/api/music/online/search?q=${encodeURIComponent(term)}`).then((r) => live && setCat(r)).catch(() => live && setCat(null));
-      api<NonNullable<typeof lib>>(`/api/music/search?q=${encodeURIComponent(term)}`).then((r) => live && setLib(r)).catch(() => live && setLib({ tracks: [], albums: [], artists: [] }));
+      const live = () => !ctl.signal.aborted;
+      const enc = encodeURIComponent(term);
+      api<NonNullable<typeof cat>>(`/api/music/online/search?q=${enc}`, opt).then((r) => live() && setCat(r)).catch(() => live() && setCat(null));
+      api<NonNullable<typeof lib>>(`/api/music/search?q=${enc}`, opt).then((r) => live() && setLib(r)).catch(() => live() && setLib({ tracks: [], albums: [], artists: [] }));
       if (mode?.onDemand) {
         setOd({ loading: true, items: [], error: "" });
-        api<{ candidates: Candidate[]; sources?: SourceReport[] }>(`/api/music/search/ondemand?q=${encodeURIComponent(term)}`).then((r) => live && setOd({ loading: false, items: r.candidates, error: "", sources: r.sources })).catch((e: Error) => live && setOd({ loading: false, items: [], error: e.message }));
+        api<{ candidates: Candidate[]; sources?: SourceReport[] }>(`/api/music/search/ondemand?q=${enc}`, opt).then((r) => live() && setOd({ loading: false, items: r.candidates, error: "", sources: r.sources })).catch((e: Error) => live() && setOd({ loading: false, items: [], error: e.message }));
       }
-    }, 450);
-    return () => { live = false; clearTimeout(t); };
+    }, term === urlQ.trim() || now ? 0 : SEARCH_DELAY_MS);
+    return () => { ctl.abort(); clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, mode?.onDemand]);
+  }, [q, mode?.onDemand, now]);
 
   const inputs = lib?.tracks.map((t) => ({ trackId: t.id })) ?? [];
   const none = lib && !lib.tracks.length && !lib.albums.length && !lib.artists.length;
   return (
     <div>
-      <div className="relative mb-6 max-w-xl md:hidden"><Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" /><Input aria-label="Search music" autoFocus placeholder="Songs, albums, artists" value={q} onChange={(e) => setQ(e.target.value)} className="pl-10" /></div>
+      <div className="relative mb-6 max-w-xl md:hidden"><Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" /><Input aria-label="Search music" autoFocus placeholder="Songs, albums, artists" value={q} onChange={(e) => { setNow(0); setQ(e.target.value); }} onKeyDown={(e) => e.key === "Enter" && setNow(Date.now())} enterKeyHint="search" className="pl-10" /></div>
       {!lib && !od && <Empty icon={Search} title="Search your music">{mode?.onDemand ? "Results from your library come first, then on-demand sources." : "Search your library by song, album or artist."}</Empty>}
       {lib && !!lib.artists.length && <><SectionTitle>Artists</SectionTitle><Grid>{lib.artists.map((a) => <ArtistCard key={a.artist} a={a} />)}</Grid></>}
       {lib && !!lib.albums.length && <><SectionTitle>Albums</SectionTitle><Grid>{lib.albums.map((a) => <AlbumCard key={a.albumKey} a={a} />)}</Grid></>}

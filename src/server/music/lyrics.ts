@@ -6,20 +6,23 @@ import { MATCH_THRESHOLD, baseTitle, normalize, scoreCandidate } from "@shared/m
 import { searchPrefixes } from "@shared/lavalink-search";
 import type { Lyrics, LyricsResult } from "@/lib/music-types";
 import { getSettings, type Settings } from "../settings";
+import { cached, forgetMemory } from "../cache";
 
 type Node = Settings["musicLavalinkNodes"][number];
 interface LlTrack { encoded: string; info: { title: string; author: string; length: number; isStream: boolean; sourceName: string } }
 interface RawLyrics { sourceName?: string; provider?: string; text?: string | null; lines?: { timestamp?: number; duration?: number | null; line?: string }[] }
 
-const HIT_TTL = 12 * 3600_000;
-const MISS_TTL = 30 * 60_000;
-const MAX_CACHE = 400;
-const g = globalThis as unknown as { __riftLyrics?: Map<string, { at: number; v: LyricsResult }>; __riftLyricsNoPlugin?: Map<string, number> };
-const cache = (g.__riftLyrics ??= new Map());
+// Lyrics don't change: found ones are kept for a month, "none found" for a day (all in the database, see ../cache).
+const HIT_TTL = 30 * 86400_000;
+const MISS_TTL = 86400_000;
+const SEARCH_TTL = 7 * 86400_000;
+const g = globalThis as unknown as { __riftLyricsNoPlugin?: Map<string, number> };
 const noPlugin = (g.__riftLyricsNoPlugin ??= new Map()); // node id -> when we learnt it has no LavaLyrics
-export const clearLyricsCache = () => { cache.clear(); noPlugin.clear(); };
+export const clearLyricsCache = () => { forgetMemory("lyrics:"); forgetMemory("llsearch:"); noPlugin.clear(); };
 
 class NoPlugin extends Error {}
+/** Thrown inside the cached lookup when no node could answer, so that answer isn't stored. */
+class Unanswered extends Error { constructor(public result: LyricsResult) { super(result.reason ?? "unanswered"); } }
 
 async function rest<T>(n: Node, path: string): Promise<{ status: number; body: T | null }> {
   const r = await fetch(n.url.replace(/\/$/, "") + path, { headers: { Authorization: n.password }, signal: AbortSignal.timeout(10_000) });
@@ -44,7 +47,12 @@ async function candidates(n: Node, q: { title: string; artist: string; durationS
   const text = `${q.artist} ${baseTitle(q.title)}`.trim();
   const out: LlTrack[] = [];
   for (const p of prefixes) {
-    const r = await rest<{ loadType: string; data: unknown }>(n, `/v4/loadtracks?identifier=${encodeURIComponent(`${p}:${text}`)}`).catch(() => null);
+    // Searches are cached too (some nodes rate-limit hard); only the search, not the lyrics call, needs the node's tracks.
+    const r = await cached(`llsearch:${n.url}|${p}:${text}`, SEARCH_TTL, async () => {
+      const x = await rest<{ loadType: string; data: unknown }>(n, `/v4/loadtracks?identifier=${encodeURIComponent(`${p}:${text}`)}`);
+      if (x.status === 429 || x.status >= 500) throw new Error(`node answered ${x.status}`);
+      return x;
+    }, { keep: (x) => !!x.body }).catch(() => null);
     if (!r?.body) continue;
     const list = r.body.loadType === "search" ? (r.body.data as LlTrack[]) : r.body.loadType === "track" ? [r.body.data as LlTrack] : [];
     const best = list
@@ -72,32 +80,29 @@ export async function findLyrics(q: { title: string; artist: string; durationSec
   const s = await getSettings();
   if (!s.musicLyrics) return { lyrics: null, reason: "Lyrics are turned off (Admin → Music → Settings)." };
   if (!s.musicLavalinkNodes.length) return { lyrics: null, reason: "Lyrics come from a Lavalink node with the LavaLyrics plugin, and none is configured." };
-  const key = `${normalize(q.artist)}|${normalize(baseTitle(q.title)) || q.title.toLowerCase()}`;
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < (hit.v.lyrics ? HIT_TTL : MISS_TTL)) return hit.v;
-
-  let sawPlugin = false;
-  let failed: string | null = null;
-  let result: LyricsResult | null = null;
-  for (const n of s.musicLavalinkNodes) {
-    const since = noPlugin.get(n.id);
-    if (since && Date.now() - since < 10 * 60_000) continue;
-    try {
-      const l = await fromNode(n, q, s.musicLavalinkAllowedSources);
-      sawPlugin = true;
-      if (l) { result = { lyrics: l }; break; }
-    } catch (e) {
-      if (e instanceof NoPlugin) noPlugin.set(n.id, Date.now());
-      else failed = `${n.name}: ${(e as Error).message}`;
-    }
+  const key = `lyrics:${normalize(q.artist)}|${normalize(baseTitle(q.title)) || q.title.toLowerCase()}`;
+  try {
+    return await cached(key, HIT_TTL, async () => {
+      let sawPlugin = false;
+      let failed: string | null = null;
+      for (const n of s.musicLavalinkNodes) {
+        const since = noPlugin.get(n.id);
+        if (since && Date.now() - since < 10 * 60_000) continue;
+        try {
+          const l = await fromNode(n, q, s.musicLavalinkAllowedSources);
+          sawPlugin = true;
+          if (l) return { lyrics: l } as LyricsResult;
+        } catch (e) {
+          if (e instanceof NoPlugin) noPlugin.set(n.id, Date.now());
+          else failed = `${n.name}: ${(e as Error).message}`;
+        }
+      }
+      if (sawPlugin) return { lyrics: null, reason: "No lyrics found for this song." } as LyricsResult;
+      // Only real answers are kept, not "node unreachable".
+      throw new Unanswered({ lyrics: null, reason: failed ? `Couldn't reach the Lavalink node (${failed}).` : "No Lavalink node has the LavaLyrics plugin. Turn on “Lyrics plugins” for the bundled node (Admin → Music → Settings), write the config and restart lavalink." });
+    }, { ttlFor: (v) => (v.lyrics ? HIT_TTL : MISS_TTL), staleMs: 0 });
+  } catch (e) {
+    if (e instanceof Unanswered) return e.result;
+    throw e;
   }
-  result ??= {
-    lyrics: null,
-    reason: sawPlugin ? "No lyrics found for this song." : failed ? `Couldn't reach the Lavalink node (${failed}).` : "No Lavalink node has the LavaLyrics plugin. Turn on “Lyrics plugins” for the bundled node (Admin → Music → Settings), write the config and restart lavalink.",
-  };
-  if (sawPlugin) { // only cache real answers, not "node unreachable"
-    if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value!);
-    cache.set(key, { at: Date.now(), v: result });
-  }
-  return result;
 }

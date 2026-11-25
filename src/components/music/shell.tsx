@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
-import { Gamepad2, Heart, Home, LayoutGrid, Library, ListMusic, LogOut, Plus, Search, Settings2, Shield, Users, X } from "lucide-react";
+import { SEARCH_DELAY_MS } from "@/lib/use-debounced";
+import { AudioLines, Gamepad2, Heart, Home, LayoutGrid, Library, ListMusic, LogOut, Plus, Search, Settings2, Shield, Users, X } from "lucide-react";
 import { Avatar, Logo } from "../brand";
 import { api } from "../ui";
 import { Cover } from "./parts";
@@ -40,10 +41,13 @@ export function MusicShell({ profile, isAdmin, children }: { profile: { name: st
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { setMenu(false); if (!path.startsWith("/music/search")) setQ(""); }, [path]);
 
-  const onSearch = (v: string) => {
+  // The search runs 1 s after the last keystroke (or at once on Enter), not on every letter.
+  const go = (v: string) => router.replace(v.trim().length >= 2 ? `/music/search?q=${encodeURIComponent(v.trim())}` : "/music/search");
+  const onSearch = (v: string, now = false) => {
     setQ(v);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => router.replace(v.trim().length >= 2 ? `/music/search?q=${encodeURIComponent(v.trim())}` : "/music/search"), 350);
+    if (now || !v.trim()) go(v);
+    else timer.current = setTimeout(() => go(v), SEARCH_DELAY_MS);
   };
   async function createPlaylist() {
     const name = prompt("Playlist name");
@@ -63,7 +67,7 @@ export function MusicShell({ profile, isAdmin, children }: { profile: { name: st
           <Link href="/music" aria-label="Home" className={clsx("rounded-full p-2.5 hover:bg-white/15", path === "/music" ? "bg-white/15" : "bg-white/10")}><Home className="size-5" /></Link>
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <input data-focusable aria-label="Search music" value={q} onChange={(e) => onSearch(e.target.value)} onFocus={() => !path.startsWith("/music/search") && router.push("/music/search")} placeholder="What do you want to play?" className="h-10 w-full rounded-full bg-white/10 pl-10 pr-9 text-sm outline-none ring-white/60 placeholder:text-white/45 focus:ring-2" />
+            <input data-focusable aria-label="Search music" value={q} onChange={(e) => onSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onSearch(q, true)} onFocus={() => !path.startsWith("/music/search") && router.push("/music/search")} placeholder="What do you want to play?" className="h-10 w-full rounded-full bg-white/10 pl-10 pr-9 text-sm outline-none ring-white/60 placeholder:text-white/45 focus:ring-2" />
             {q && <button aria-label="Clear search" onClick={() => onSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white"><X className="size-4" /></button>}
           </div>
         </div>
@@ -77,6 +81,7 @@ export function MusicShell({ profile, isAdmin, children }: { profile: { name: st
                 <Link href="/apps" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><LayoutGrid className="size-4" /> Switch app</Link>
                 <Link href="/profiles" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Users className="size-4" /> Switch profile</Link>
                 <Link href="/profiles?manage=1" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Settings2 className="size-4" /> Manage profiles</Link>
+                <Link href="/music/taste" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><AudioLines className="size-4" /> Your music taste</Link>
                 <Link href="/discord" className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/10"><Gamepad2 className="size-4" /> Discord presence</Link>
                 {isAdmin && <Link href="/admin/music" className="flex items-center gap-3 px-4 py-2.5 text-violet-300 hover:bg-white/10"><Shield className="size-4" /> Music admin</Link>}
                 <button onClick={signOut} className="flex w-full items-center gap-3 border-t border-white/10 px-4 py-2.5 text-left hover:bg-white/10"><LogOut className="size-4" /> Sign out</button>

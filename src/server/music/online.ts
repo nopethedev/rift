@@ -2,6 +2,7 @@ import "server-only";
 // Metadata from public, keyless APIs: Deezer (charts, releases, artists, albums, covers), iTunes (cover fallback) and
 // Wikipedia (artist bios). Metadata only: no audio ever comes from here. Everything is cached in memory and rate limited.
 import { getSettings } from "../settings";
+import { cached, forgetMemory } from "../cache";
 import { normalize } from "@shared/music-match";
 import type { ArtistProfile, CatAlbum, CatArtist, CatTrack, Feed, Shelf } from "@/lib/music-types";
 
@@ -17,10 +18,11 @@ export async function onlineEnabled(): Promise<boolean> {
 }
 
 // ---------- fetch with cache, spacing and timeout ----------
-const MAX_CACHE = 600;
-const g = globalThis as unknown as { __riftOnline?: { cache: Map<string, { at: number; v: unknown }>; inflight: Map<string, Promise<unknown>>; next: number } };
-const st = (g.__riftOnline ??= { cache: new Map(), inflight: new Map(), next: 0 });
-export const clearOnlineCache = () => { st.cache.clear(); st.inflight.clear(); };
+// Answers are kept in memory and in the database (src/server/cache.ts): a restart doesn't refetch everything, and when
+// Deezer rate-limits or is down, a copy up to a week old is shown instead of an error.
+const g = globalThis as unknown as { __riftOnlineGate?: { next: number } };
+const st = (g.__riftOnlineGate ??= { next: 0 });
+export const clearOnlineCache = () => forgetMemory("net:");
 
 /** Deezer allows ~50 requests / 5 s: space requests ~120 ms apart. */
 async function gate() {
@@ -32,24 +34,15 @@ async function gate() {
 
 /** `reject` returns an error message for a 200 answer that must not be cached (e.g. Deezer's in-body quota error). */
 async function getJson<T>(url: string, ttlMs: number, headers: Record<string, string> = {}, reject?: (v: T) => string | null): Promise<T> {
-  const hit = st.cache.get(url);
-  if (hit && Date.now() - hit.at < ttlMs) return hit.v as T;
-  let p = st.inflight.get(url) as Promise<T> | undefined;
-  if (!p) {
-    p = (async () => {
-      await gate();
-      const res = await fetch(url, { headers: { accept: "application/json", "user-agent": "Rift/1.0 (self-hosted media server)", ...headers }, signal: AbortSignal.timeout(9000) }).catch((e: Error) => { throw new OnlineError(`Could not reach ${new URL(url).host}: ${e.cause instanceof Error ? e.cause.message : e.message}`); });
-      if (!res.ok) throw new OnlineError(`${new URL(url).host} answered ${res.status}`);
-      const v = (await res.json().catch(() => { throw new OnlineError(`${new URL(url).host} sent invalid JSON`); })) as T;
-      const bad = reject?.(v);
-      if (bad) throw new OnlineError(bad);
-      if (st.cache.size >= MAX_CACHE) st.cache.delete(st.cache.keys().next().value!);
-      st.cache.set(url, { at: Date.now(), v });
-      return v;
-    })().finally(() => st.inflight.delete(url));
-    st.inflight.set(url, p);
-  }
-  return p;
+  return cached<T>(`net:${url}`, ttlMs, async () => {
+    await gate();
+    const res = await fetch(url, { headers: { accept: "application/json", "user-agent": "Rift/1.0 (self-hosted media server)", ...headers }, signal: AbortSignal.timeout(9000) }).catch((e: Error) => { throw new OnlineError(`Could not reach ${new URL(url).host}: ${e.cause instanceof Error ? e.cause.message : e.message}`); });
+    if (!res.ok) throw new OnlineError(`${new URL(url).host} answered ${res.status}`);
+    const v = (await res.json().catch(() => { throw new OnlineError(`${new URL(url).host} sent invalid JSON`); })) as T;
+    const bad = reject?.(v);
+    if (bad) throw new OnlineError(bad);
+    return v;
+  });
 }
 
 interface DzErr { error?: { type?: string; message?: string; code?: number } }
@@ -185,6 +178,29 @@ export async function artistProfile(artistId: string): Promise<ArtistProfile> {
   const seen = new Set<string>();
   const uniq = disco.albums.filter((x) => { const k = `${normalize(x.title) || x.title.toLowerCase()}|${x.kind === "album" || x.kind === null ? "a" : x.kind}`; if (seen.has(k)) return false; seen.add(k); return true; }).sort((x, y) => (y.year ?? 0) - (x.year ?? 0));
   return { artist: { ...mapArtist(a), albums: typeof a.nb_album === "number" ? a.nb_album : null }, bio, topTracks: top, albums: uniq, albumsError: disco.error, related };
+}
+
+// ---------- recommendation sources (all cached for hours; see src/server/music/taste.ts) ----------
+const okId = (id: string) => /^\d{1,12}$/.test(id);
+/** Most popular artists overall or in a genre (onboarding). */
+export async function chartArtists(genreId = "0", limit = 40): Promise<CatArtist[]> {
+  if (!okId(genreId)) return [];
+  return dz<Raw>(`/chart/${genreId}/artists?limit=${limit}`, 12 * HOUR).then((r) => list(r).map(mapArtist));
+}
+/** An artist's most played songs (best first). */
+export async function artistTop(artistId: string, limit = 15): Promise<CatTrack[]> {
+  if (!okId(artistId)) return [];
+  return dz<Raw>(`/artist/${artistId}/top?limit=${limit}`, 12 * HOUR).then((r) => dedupeSongs(list(r).filter(playable).map((t) => mapTrack(t))));
+}
+/** "Fans also like" (Deezer's similar-artist graph, closest first). */
+export async function artistRelated(artistId: string, limit = 12): Promise<CatArtist[]> {
+  if (!okId(artistId)) return [];
+  return dz<Raw>(`/artist/${artistId}/related?limit=${limit}`, 24 * HOUR).then((r) => list(r).map(mapArtist));
+}
+/** Deezer's artist radio: songs by the artist and similar ones, mixed. */
+export async function artistRadio(artistId: string, limit = 25): Promise<CatTrack[]> {
+  if (!okId(artistId)) return [];
+  return dz<Raw>(`/artist/${artistId}/radio?limit=${limit}`, 12 * HOUR).then((r) => list(r).filter(playable).map((t) => mapTrack(t)));
 }
 
 export async function albumDetail(albumId: string): Promise<{ album: CatAlbum & { label: string | null; genres: string[]; durationSec: number }; tracks: CatTrack[] }> {

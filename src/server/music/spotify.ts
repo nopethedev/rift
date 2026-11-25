@@ -39,13 +39,20 @@ export function mapApiTrack(t: ApiTrack | null | undefined): ImportedTrack | nul
   };
 }
 
+const g = globalThis as unknown as { __riftSpotifyToken?: { key: string; token: string; until: number } };
+/** Client-credentials token, reused until shortly before it expires (an hour). */
 async function apiToken(id: string, secret: string): Promise<string> {
+  const key = `${id}:${secret}`;
+  const hit = g.__riftSpotifyToken;
+  if (hit && hit.key === key && hit.until > Date.now()) return hit.token;
   const r = await spfetch("https://accounts.spotify.com/api/token", {
     method: "POST", headers: { Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`, "content-type": "application/x-www-form-urlencoded" },
     body: "grant_type=client_credentials", signal: AbortSignal.timeout(15_000),
   });
   if (!r.ok) throw new SpotifyError(`Spotify rejected the client credentials (${r.status}). Check them in Admin → Music → Settings.`, 502);
-  return ((await r.json()) as { access_token: string }).access_token;
+  const j = (await r.json()) as { access_token: string; expires_in?: number };
+  g.__riftSpotifyToken = { key, token: j.access_token, until: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 120) * 1000 };
+  return j.access_token;
 }
 
 async function viaApi(kind: "playlist" | "album", id: string, cid: string, secret: string): Promise<ImportedPlaylist> {
@@ -104,7 +111,7 @@ async function viaEmbed(kind: "playlist" | "album", id: string): Promise<Importe
 }
 
 export async function fetchSpotify(url: string): Promise<ImportedPlaylist> {
-  const ref = parseSpotifyUrl(url);
+  const ref = parseSpotifyUrl(isShort(url.trim()) ? await expandShortLink(url.trim()) : url);
   if (!ref) throw new SpotifyError("That doesn't look like a Spotify playlist or album link.", 400);
   const s = await getSettings();
   if (s.spotifyClientId && s.spotifyClientSecret) {
@@ -112,4 +119,88 @@ export async function fetchSpotify(url: string): Promise<ImportedPlaylist> {
     catch (e) { if (!(e instanceof SpotifyError) || e.status === 404) throw e; /* API trouble: try the embed page */ }
   }
   return viaEmbed(ref.kind, ref.id);
+}
+
+// ---------- links: short links, several at once, a user's public playlists ----------
+export type SpotifyRef = { kind: "playlist" | "album"; id: string } | { kind: "user"; id: string };
+
+export function parseSpotifyRef(input: string): SpotifyRef | null {
+  const pa = parseSpotifyUrl(input);
+  if (pa) return pa;
+  const s = input.trim();
+  const m = /^spotify:user:([A-Za-z0-9._-]{1,64})$/.exec(s);
+  if (m) return { kind: "user", id: m[1] };
+  try {
+    const u = new URL(s);
+    if (u.hostname !== "open.spotify.com") return null;
+    const x = /\/(?:intl-[a-z-]+\/)?user\/([A-Za-z0-9._-]{1,64})\/?$/.exec(u.pathname);
+    return x ? { kind: "user", id: decodeURIComponent(x[1]) } : null;
+  } catch { return null; }
+}
+
+/** Links in pasted text (the Spotify app shares "Listen to X on Spotify: https://…"). */
+export function findSpotifyLinks(text: string): string[] {
+  const found = text.match(/(?:https?:\/\/(?:open\.spotify\.com|spotify\.link|spoti\.fi)\/[^\s"'<>]+|spotify:(?:playlist|album|user):[A-Za-z0-9._-]+)/g) ?? [];
+  return [...new Set(found.map((x) => x.replace(/[).,;]+$/, "")))].slice(0, 50);
+}
+
+const isShort = (url: string) => { try { return ["spotify.link", "spoti.fi"].includes(new URL(url).hostname); } catch { return false; } };
+
+/** spotify.link / spoti.fi short links (what the phone app shares) -> the open.spotify.com link behind them. */
+export async function expandShortLink(url: string): Promise<string> {
+  if (!isShort(url)) return url;
+  let cur = url;
+  for (let i = 0; i < 4; i++) {
+    const r = await spfetch(cur, { redirect: "manual", headers: { "user-agent": "Mozilla/5.0 (compatible; Rift/1.0)" }, signal: AbortSignal.timeout(10_000) });
+    const loc = r.headers.get("location");
+    if (loc) {
+      const next = new URL(loc, cur).toString();
+      if (parseSpotifyRef(next)) return next;
+      cur = next;
+      continue;
+    }
+    // Branch links answer with a page that redirects in script: the target is in it.
+    const html = await r.text().catch(() => "");
+    const m = /https:\/\/open\.spotify\.com\/[a-z-/]*?(?:playlist|album|user)\/[A-Za-z0-9._-]+/.exec(html.replace(/\\\//g, "/"));
+    if (m) return m[0];
+    break;
+  }
+  throw new SpotifyError("Couldn't open that spotify.link short link. Open it in the browser and paste the open.spotify.com link instead.", 400);
+}
+
+export interface SpotifyListEntry { url: string; kind: "playlist" | "album"; id: string; name?: string; tracks?: number; owner?: string; artworkUrl?: string | null }
+
+/** A user's public playlists (needs the Web API: a client id/secret). */
+export async function userPlaylists(userId: string): Promise<SpotifyListEntry[]> {
+  const s = await getSettings();
+  if (!s.spotifyClientId || !s.spotifyClientSecret) throw new SpotifyError("Importing every playlist of a Spotify profile needs a Spotify client id/secret (Admin → Music → Settings). Paste the playlists' own links instead.", 400);
+  const token = await apiToken(s.spotifyClientId, s.spotifyClientSecret);
+  const out: SpotifyListEntry[] = [];
+  let url: string | null = `https://api.spotify.com/v1/users/${encodeURIComponent(userId)}/playlists?limit=50`;
+  while (url && out.length < 200) {
+    const r = await spfetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+    if (r.status === 404) throw new SpotifyError("Spotify has no profile with that link.", 404);
+    if (!r.ok) throw new SpotifyError(`Spotify API error ${r.status}`);
+    const page = (await r.json()) as { next: string | null; items: ({ id: string; name: string; tracks?: { total?: number }; owner?: { display_name?: string }; images?: { url: string }[] } | null)[] };
+    for (const p of page.items) if (p?.id) out.push({ url: `https://open.spotify.com/playlist/${p.id}`, kind: "playlist", id: p.id, name: p.name, tracks: p.tracks?.total, owner: p.owner?.display_name, artworkUrl: p.images?.[0]?.url ?? null });
+    url = page.next;
+  }
+  return out;
+}
+
+export interface PreviewItem { input: string; entries: SpotifyListEntry[]; error?: string; user?: string }
+
+/** What a paste would import: each link resolved (short links expanded, profiles expanded to their playlists). */
+export async function previewSpotify(text: string): Promise<PreviewItem[]> {
+  const links = findSpotifyLinks(text);
+  if (!links.length) throw new SpotifyError("No Spotify playlist, album or profile link found. Copy the link from Spotify (Share → Copy link) and paste it here.", 400);
+  return Promise.all(links.map(async (input): Promise<PreviewItem> => {
+    try {
+      const url = await expandShortLink(input);
+      const ref = parseSpotifyRef(url);
+      if (!ref) return { input, entries: [], error: /\/track\//.test(url) ? "That's a song link. Rift imports playlists and albums: share the playlist instead." : "Not a playlist, album or profile link." };
+      if (ref.kind === "user") return { input, user: ref.id, entries: await userPlaylists(ref.id) };
+      return { input, entries: [{ url: `https://open.spotify.com/${ref.kind}/${ref.id}`, kind: ref.kind, id: ref.id }] };
+    } catch (e) { return { input, entries: [], error: (e as Error).message }; }
+  }));
 }

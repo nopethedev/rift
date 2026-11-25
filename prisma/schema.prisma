@@ -50,6 +50,9 @@ model Profile {
   presenceToken  String?         @unique
   presenceMusic  Boolean         @default(true)
   presenceStream Boolean         @default(false)
+  // Music onboarding: JSON { artists: {id,name,pictureUrl}[], genres: {id,name}[] } picked by the profile, and when it was finished
+  musicTaste       String?
+  musicOnboardedAt DateTime?
   createdAt DateTime        @default(now())
   user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   progress  WatchProgress[]
@@ -98,6 +101,16 @@ model WatchlistItem {
 model Setting {
   key   String @id
   value String
+}
+
+// Answers from rate-limited outside services (Deezer, Lavalink searches, lyrics, Spotify) kept across restarts.
+// Each caller decides how old an entry may be; very old rows are purged.
+model CacheEntry {
+  key      String   @id
+  value    String
+  storedAt DateTime @default(now())
+
+  @@index([storedAt])
 }
 
 // A movie or a TV show in the library (local) — metadata cached from TMDB.

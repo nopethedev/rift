@@ -6,7 +6,9 @@ import { MusicSpacer, PlayerBar } from "./music/player-bar";
 
 /** Stream (movies/TV) and Music are two apps with their own chrome; the URL decides which one is showing. */
 export function AppChrome({ profile, isAdmin, children }: { profile: { name: string; avatar: string }; isAdmin: boolean; children: React.ReactNode }) {
-  const music = usePathname().startsWith("/music");
+  const path = usePathname();
+  const music = path.startsWith("/music");
+  if (path.startsWith("/music/welcome")) return <main>{children}</main>; // onboarding: full screen, no chrome
   if (music) {
     return (
       <>

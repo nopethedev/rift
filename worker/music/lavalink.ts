@@ -2,6 +2,7 @@
 import { EventEmitter } from "node:events";
 import { WebSocket } from "ws";
 import type { LavalinkNodeConfig } from "../../shared/music-protocol";
+import { lookups } from "./lookup-cache";
 
 export interface LavalinkTrack {
   encoded: string;
@@ -10,6 +11,11 @@ export interface LavalinkTrack {
 export interface LoadResult { loadType: "track" | "playlist" | "search" | "empty" | "error"; data: unknown }
 
 const USER_ID = "839204651922870272"; // arbitrary snowflake identifying Rift to the node
+const SEARCH_TTL = 24 * 3600_000;
+const EMPTY_TTL = 3600_000;
+const KEEP_TRACKS = 15; // a cached search keeps its first results only (keeps the cache file small)
+
+export class RateLimitedError extends Error {}
 
 export class LavalinkNode extends EventEmitter {
   sessionId: string | null = null;
@@ -18,6 +24,8 @@ export class LavalinkNode extends EventEmitter {
   version?: string;
   players = 0;
   cpu = 0;
+  /** The node answered 429: leave it alone until then (searches go to other nodes or the cache). */
+  limitedUntil = 0;
   private ws?: WebSocket;
   private stopped = false;
   private retry = 1000;
@@ -72,19 +80,36 @@ export class LavalinkNode extends EventEmitter {
     return Promise.race([this.ready, new Promise<string>((_, rej) => setTimeout(() => rej(new Error(`Lavalink node "${this.cfg.name}" is not connected${this.lastError ? `: ${this.lastError}` : ""}`)), ms).unref())]);
   }
 
+  get limited() { return this.limitedUntil > Date.now(); }
+
   async rest<T>(method: string, path: string, body?: unknown): Promise<T> {
+    if (this.limited && method === "GET") throw new RateLimitedError(`Lavalink node "${this.cfg.name}" is rate-limiting Rift; trying again in ${Math.ceil((this.limitedUntil - Date.now()) / 1000)}s`);
     const r = await fetch(this.base + path, {
       method,
       headers: { ...this.headers, ...(body ? { "content-type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(15_000),
     });
+    if (r.status === 429) {
+      const after = Number(r.headers.get("retry-after"));
+      this.limitedUntil = Date.now() + Math.min(600, Math.max(5, Number.isFinite(after) && after > 0 ? after : 30)) * 1000;
+      throw new RateLimitedError(`Lavalink node "${this.cfg.name}" is rate-limiting Rift (429); it is left alone for ${Math.round((this.limitedUntil - Date.now()) / 1000)}s`);
+    }
     if (!r.ok) throw new Error(`Lavalink ${method} ${path.split("?")[0]} -> ${r.status} ${(await r.text().catch(() => "")).slice(0, 200)}`);
     return (r.status === 204 ? undefined : await r.json()) as T;
   }
 
+  /**
+   * loadtracks, cached per node + identifier (a day for searches, an hour for "nothing found"). Errors aren't cached;
+   * when the node fails or rate-limits, a copy up to 3 days old is used.
+   */
   async load(identifier: string): Promise<LoadResult> {
-    return this.rest<LoadResult>("GET", `/v4/loadtracks?identifier=${encodeURIComponent(identifier)}`);
+    return lookups.wrap(`ll|${this.base}|${identifier}`, SEARCH_TTL, async () => {
+      const r = await this.rest<LoadResult>("GET", `/v4/loadtracks?identifier=${encodeURIComponent(identifier)}`);
+      if (r.loadType === "error") throw new Error((r.data as { message?: string })?.message ?? "Lavalink load error");
+      if (r.loadType === "search" && Array.isArray(r.data)) return { ...r, data: r.data.slice(0, KEEP_TRACKS) };
+      return r;
+    }, { ttlFor: (r) => (r.loadType === "empty" ? EMPTY_TTL : SEARCH_TTL) });
   }
 
   async search(prefix: string, text: string): Promise<LavalinkTrack[]> {
@@ -138,9 +163,9 @@ export class LavalinkPool {
 
   get(id?: string) { return id ? this.nodes.get(id) : undefined; }
 
-  /** Online nodes first, least loaded first. */
+  /** Online nodes first, rate-limited ones last, least loaded first. */
   ordered(): LavalinkNode[] {
-    return [...this.nodes.values()].sort((a, b) => Number(b.online) - Number(a.online) || a.players + a.cpu * 10 - (b.players + b.cpu * 10));
+    return [...this.nodes.values()].sort((a, b) => Number(b.online) - Number(a.online) || Number(a.limited) - Number(b.limited) || a.players + a.cpu * 10 - (b.players + b.cpu * 10));
   }
 
   all() { return [...this.nodes.values()]; }

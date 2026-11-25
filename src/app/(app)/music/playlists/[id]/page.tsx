@@ -1,13 +1,15 @@
 "use client";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle2, CloudDownload, HardDrive, Loader2, Play, RefreshCw, Shuffle, Trash2, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, CloudDownload, HardDrive, Loader2, Play, Plus, RefreshCw, Shuffle, Trash2, X } from "lucide-react";
 import { api, Button, Skeleton } from "@/components/ui";
 import { ErrorNote } from "@/app/admin/parts";
 import { usePoll } from "@/lib/use-poll";
 import { Cover, TrackRow, type RowItem } from "@/components/music/parts";
 import { useMusic } from "@/components/music/player-provider";
 import type { TrackDTO } from "@/lib/music-types";
+import { songKey } from "@/lib/music-taste";
+import { PlaylistFinder, PlaylistRecommendations, type FinderHandle } from "@/components/music/playlist-extras";
 
 interface Item { id: string; title: string; artist: string; album: string | null; durationSec: number | null; artworkUrl: string | null; trackId: string | null; availability: "local" | "ondemand" | "unavailable" | null; availabilityNote: string | null; track: TrackDTO | null }
 interface Resp { playlist: { id: string; name: string; description: string | null; source: string; sourceUrl: string | null; artworkUrl: string | null; lastSyncedAt: string | null; count: number; unavailable: number }; items: Item[]; check: { running: boolean; done: number; total: number } | null; artFill?: { running: boolean; done: number; total: number } | null }
@@ -23,6 +25,8 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const checking = !!data?.check?.running;
   const busyBackground = checking || !!data?.artFill?.running; // covers appear as they are found
   useEffect(() => { setPoll(busyBackground ? 1500 : 0); }, [busyBackground]);
+  const finder = useRef<FinderHandle>(null);
+  const inPlaylist = useMemo(() => new Set((data?.items ?? []).map((i) => songKey(i.artist, i.title))), [data?.items]);
 
   if (loading) return <Skeleton className="h-64" />;
   if (error || !data) return <p role="alert" className="text-red-300">{error || "Playlist not found"}</p>;
@@ -57,6 +61,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
           <p className="mt-1 text-sm text-white/80">{p.count} tracks · {playable} playable{p.unavailable ? ` · ${p.unavailable} unavailable` : ""}{p.lastSyncedAt ? ` · synced ${new Date(p.lastSyncedAt).toLocaleDateString()}` : ""}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={() => playPlaylist(id)} disabled={!playable}><Play className="size-4 fill-current" /> Play</Button>
+            <Button variant="secondary" onClick={() => finder.current?.open()}><Plus className="size-4" /> Add songs</Button>
             <Button variant="secondary" onClick={() => playPlaylist(id, { shuffle: true })} disabled={!playable}><Shuffle className="size-4" /> Shuffle</Button>
             {p.source === "spotify" && <Button variant="secondary" loading={busy === "sync"} onClick={() => act("sync")}><RefreshCw className="size-4" /> Sync</Button>}
             <Button variant="secondary" loading={busy === "check" || checking} onClick={() => act("check")}><CheckCircle2 className="size-4" /> {checking ? `Checking ${data.check!.done}/${data.check!.total}` : "Check sources"}</Button>
@@ -72,7 +77,9 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
           <button aria-label={`Remove ${it.title}`} onClick={async () => { await api(`/api/music/playlists/${id}/items`, { method: "DELETE", body: { itemId: it.id } }); reload(); }} className="rounded-md p-1.5 text-white/40 hover:text-red-300"><X className="size-4" /></button>
         </div>
       ))}
-      {!items.length && <p className="py-10 text-center text-muted">This playlist is empty. Add songs from any track&apos;s menu.</p>}
+      {!items.length && <p className="py-8 text-center text-muted">This playlist is empty. Search for songs below, pick from the suggestions, or use “Add to playlist” in any song&apos;s menu.</p>}
+      <PlaylistFinder ref={finder} playlistId={id} inPlaylist={inPlaylist} onAdded={reload} startOpen={!items.length} />
+      <PlaylistRecommendations playlistId={id} onAdded={reload} empty={!items.length} inPlaylist={inPlaylist} />
     </div>
   );
 }

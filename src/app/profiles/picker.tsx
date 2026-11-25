@@ -42,7 +42,7 @@ export function ProfilePicker({ profiles, max, startManaging }: { profiles: P[];
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
-            whileHover={{ scale: 1.06 }}
+           
             onClick={() => (managing ? setEditing(p) : p.hasPin ? setPinFor(p) : choose(p))}
             className="group flex w-28 flex-col items-center gap-3 outline-none sm:w-32"
           >
@@ -59,7 +59,7 @@ export function ProfilePicker({ profiles, max, startManaging }: { profiles: P[];
         ))}
         {profiles.length < max && (
           <motion.button
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} whileHover={{ scale: 1.06 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             onClick={() => setEditing("new")}
             className="group flex w-28 flex-col items-center gap-3 outline-none sm:w-32"
           >
@@ -240,7 +240,7 @@ function GenreStep({ selected, onChange, name, err, busy, onBack, onSkip, onDone
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-bold">What does {name} like to watch?</h2>
-        <p className="mt-1 text-sm text-muted">Pick {PICK_COUNT} genres. We start with these and learn from what gets watched and saved.</p>
+        <p className="mt-1 text-sm text-muted">Pick {PICK_COUNT}. They fill the home page until there is some watch history, then what gets watched and saved takes over.</p>
       </div>
       <div role="group" aria-label="Genres" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {TASTE_GENRES.map((g) => {
@@ -248,21 +248,18 @@ function GenreStep({ selected, onChange, name, err, busy, onBack, onSkip, onDone
           const on = idx >= 0;
           const imgs = (posters[g.key] ?? []).slice(0, 3);
           return (
-            <motion.button
+            <button
               key={g.key} type="button" aria-pressed={on} disabled={!on && full} onClick={() => toggle(g.key)}
-              whileTap={{ scale: 0.97 }}
-              style={{ backgroundImage: `linear-gradient(135deg, ${g.from}, ${g.to})` }}
-              className={`relative flex h-24 flex-col justify-end overflow-hidden rounded-xl p-3 text-left transition ${on ? "ring-[3px] ring-white" : "ring-1 ring-white/10"} ${!on && full ? "opacity-40" : "hover:brightness-110"}`}
+              className={`relative flex flex-col overflow-hidden rounded-xl border bg-white/[0.04] text-left transition ${on ? "border-white" : "border-white/10 hover:border-white/30"} ${!on && full ? "opacity-40" : ""}`}
             >
-              {imgs.length > 0 && (
-                <span aria-hidden className="absolute -right-2 -top-1 flex -space-x-5 opacity-90">
-                  {imgs.map((p, i) => <img key={p} src={tmdbImg(p, "w185")!} alt="" loading="lazy" draggable={false} style={{ transform: `rotate(${(i - 1) * 7}deg)` }} className="h-20 w-14 rounded-md object-cover shadow-lg ring-1 ring-black/40" />)}
-                </span>
-              )}
-              <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-              <span className="relative text-sm font-bold leading-tight drop-shadow">{g.label}</span>
-              {on && <span className="absolute left-2 top-2 flex size-6 items-center justify-center rounded-full bg-white text-xs font-bold text-black"><Check className="size-3.5" /></span>}
-            </motion.button>
+              <span aria-hidden className="grid h-20 grid-cols-3 gap-px bg-black/40">
+                {[0, 1, 2].map((i) => imgs[i] ? <img key={i} src={tmdbImg(imgs[i], "w185")!} alt="" loading="lazy" draggable={false} className="size-full object-cover" /> : <span key={i} className="bg-white/[0.03]" />)}
+              </span>
+              <span className="flex items-center justify-between gap-2 px-3 py-2">
+                <span className="text-sm font-semibold leading-tight">{g.label}</span>
+                {on && <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-white text-black"><Check className="size-3.5" /></span>}
+              </span>
+            </button>
           );
         })}
       </div>
