@@ -17,7 +17,7 @@ export async function createMusic(cfg: WorkerConfig): Promise<MusicService> {
       sink = await startSink(env);
       console.log(`[music] Lavalink voice sink on ${sink.endpoint} (udp ${env.udpPort}), certificate in ${env.tlsDir}`);
     } catch (e) {
-      console.warn("[music] voice sink unavailable (Lavalink engine will not work):", (e as Error).message);
+      console.warn("[music] voice sink unavailable (Lavalink tracks play through the CDN extractor only):", (e as Error).message);
     }
   }
   const engines = { ytdlp: ytdlpEngine, lavalink: lavalinkEngine(pool, () => sink) };

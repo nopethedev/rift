@@ -1,10 +1,13 @@
-// Engine B: Lavalink. The node resolves and decodes; the voice sink catches its "voice channel" audio and we re-wrap it.
+// Engine B: Lavalink. The node searches; the audio is then fetched straight from the source's CDN (direct/, the extractor
+// ported from Rift Solo). When that isn't possible, the node plays the track and the voice sink catches its "voice channel"
+// audio, which needs a node that can reach the worker and takes as long as the song.
 import type { Candidate, MusicConfig, TrackQuery } from "../../../shared/music-protocol";
 import { MATCH_THRESHOLD, scoreCandidate } from "../../../shared/music-match";
 import type { LavalinkNode, LavalinkPool, LavalinkTrack } from "../lavalink";
 import type { VoiceSink } from "../voice-sink";
 import { searchPrefixes, sourceAllowed } from "../../../shared/lavalink-search";
 import { EngineError, type AudioSource, type Engine } from "./types";
+import { DIRECT_SOURCES, MIRRORED_SOURCES, directEnabled, extractBest, openDirect } from "../direct";
 
 export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | null): Engine {
   const toCandidate = (n: LavalinkNode, t: LavalinkTrack): Candidate => ({
@@ -21,17 +24,21 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
     sourceName: t.info.sourceName,
   });
 
+  // Searching only needs a node; the voice sink is only needed to play what the CDN extractor can't.
   const usable = (cfg: MusicConfig) => {
     pool.sync(cfg.lavalink.nodes);
     const nodes = pool.ordered();
-    if (!getSink()) throw new EngineError("The Lavalink audio bridge (voice sink) is not running on the worker", "unavailable");
     if (!nodes.length) throw new EngineError("No Lavalink nodes are configured", "unavailable");
     return nodes;
+  };
+  const direct = (c: Candidate) => {
+    const src = (c.sourceName ?? "").toLowerCase();
+    return directEnabled() && (DIRECT_SOURCES.has(src) || MIRRORED_SOURCES.has(src));
   };
   const allowed = (cfg: MusicConfig, c: Candidate) => sourceAllowed(cfg.lavalink.allowedSources, c.sourceName);
 
   // A pasted direct link is loaded as-is (Lavalink's "http" source).
-  const direct = (n: LavalinkNode, url: string) => n.load(url).then((r) => (r.loadType === "track" ? [r.data as LavalinkTrack] : r.loadType === "playlist" ? (r.data as { tracks: LavalinkTrack[] }).tracks : []));
+  const loadUrl = (n: LavalinkNode, url: string) => n.load(url).then((r) => (r.loadType === "track" ? [r.data as LavalinkTrack] : r.loadType === "playlist" ? (r.data as { tracks: LavalinkTrack[] }).tracks : []));
   // Anything else goes through the node's search prefix(es). Several prefixes are searched at once and merged, so a node
   // that can search SoundCloud, YouTube, Spotify... isn't limited to one of them; one prefix failing doesn't hide the rest.
   async function prefixed(n: LavalinkNode, text: string, cfg: MusicConfig): Promise<LavalinkTrack[]> {
@@ -50,7 +57,7 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
     for (const n of usable(cfg)) {
       try {
         await n.waitReady(4000);
-        const tracks = /^https?:\/\//i.test(text) ? await direct(n, text) : await prefixed(n, text, cfg);
+        const tracks = /^https?:\/\//i.test(text) ? await loadUrl(n, text) : await prefixed(n, text, cfg);
         return tracks.filter((t) => !t.info.isStream).map((t) => toCandidate(n, t)).filter((c) => allowed(cfg, c));
       } catch (e) { lastErr = e as Error; }
     }
@@ -78,8 +85,19 @@ export function lavalinkEngine(pool: LavalinkPool, getSink: () => VoiceSink | nu
     async open(c, cfg): Promise<AudioSource> {
       usable(cfg);
       if (!allowed(cfg, c)) throw new EngineError(`Source "${c.sourceName}" is not enabled for Lavalink playback`, "unlicensed");
+      let directErr: EngineError | undefined;
+      if (direct(c)) {
+        try {
+          const a = await extractBest(c);
+          console.log(`[music] ${c.sourceId}: direct from the CDN (${a.via})`);
+          return openDirect(a);
+        } catch (e) {
+          directErr = e instanceof EngineError ? e : new EngineError((e as Error).message);
+          console.warn(`[music] ${c.sourceId}: CDN extractor failed, trying the voice sink: ${directErr.message}`);
+        }
+      }
       const sink = getSink();
-      if (!sink) throw new EngineError("The Lavalink audio bridge (voice sink) is not running on the worker", "unavailable");
+      if (!sink) throw directErr ?? new EngineError("The Lavalink audio bridge (voice sink) is not running on the worker", "unavailable");
       if (!c.encoded) throw new EngineError("Candidate has no Lavalink track data", "failed");
       const node = pool.get(c.nodeId) && pool.get(c.nodeId)!.online ? pool.get(c.nodeId)! : pool.ordered().find((n) => n.online);
       if (!node) throw new EngineError("No Lavalink node is online", "unavailable");
